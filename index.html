@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#8b2e2e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>한능검 암기</title>
+<style>
+  :root { --bg:#faf7f2; --fg:#222; --muted:#777; --accent:#8b2e2e; --ok:#2e7d32; --bad:#c62828; --card:#fff; --line:#e5e0d8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1a18; --fg:#eee; --muted:#999; --card:#26241f; --line:#3a372f; --ok:#66bb6a; --bad:#ef5350; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.5 system-ui, sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:16px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  h1 { font-size:20px; margin:8px 0; } h2 { font-size:17px; margin:24px 0 8px; }
+  button, select, input, textarea { font:inherit; color:var(--fg); }
+  button { padding:12px 16px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent); width:100%; }
+  .choices button { display:block; width:100%; margin:8px 0; text-align:left; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin:12px 0; }
+  .front { font-size:21px; font-weight:600; min-height:3em; word-break:keep-all; }
+  .tag, .muted { color:var(--muted); font-size:14px; }
+  .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
+  #feedback p { font-size:19px; font-weight:600; }
+  #feedback button { margin:4px 8px 4px 0; }
+  .stats { display:flex; gap:12px; } .stats div { flex:1; text-align:center; } .stats b { display:block; font-size:28px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; } td { padding:6px 0; border-bottom:1px solid var(--line); } td + td { text-align:right; }
+  input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
+  textarea { height:140px; }
+  .row { display:flex; gap:8px; margin:8px 0; } .row > * { flex:1; }
+  ul { padding-left:20px; } li { margin:6px 0; }
+  [hidden] { display:none !important; }
+  #warn { color:var(--bad); margin:0; }
+</style>
+</head>
+<body>
+<main>
+  <p id="warn"></p>
+
+  <section id="home">
+    <header><h1>한능검 암기</h1><button id="toManage">관리</button></header>
+    <div class="card stats"><div><b id="dueCount">0</b>복습</div><div><b id="newCount">0</b>새 카드</div></div>
+    <select id="eraSelect" aria-label="시대 선택"></select>
+    <p><button class="primary" id="start">학습 시작</button></p>
+    <p id="homeMsg" class="muted"></p>
+    <table id="eraTable"></table>
+  </section>
+
+  <section id="study" hidden>
+    <header><button id="quit">← 홈</button><span id="progressText" class="muted"></span></header>
+    <div class="card">
+      <div class="tag" id="qTag"></div>
+      <div class="front" id="qFront"></div>
+    </div>
+    <div class="choices" id="choices"></div>
+    <form id="saForm" hidden>
+      <input id="saInput" autocomplete="off" placeholder="정답 입력" aria-label="정답 입력">
+      <p><button class="primary">확인</button></p>
+    </form>
+    <div id="feedback"></div>
+    <p><button id="flag">신고</button></p>
+  </section>
+
+  <section id="manage" hidden>
+    <header><button id="back">← 홈</button><h1>관리</h1></header>
+    <h2>Quizlet 가져오기</h2>
+    <p class="muted">Quizlet 세트 → ⋯ → 내보내기 → "용어와 정의 사이: 탭", "카드 사이: 새 줄"로 복사한 뒤 붙여넣기</p>
+    <textarea id="importText" aria-label="Quizlet 내보내기 텍스트"></textarea>
+    <div class="row"><select id="importEra" aria-label="가져올 카드의 시대"></select><button id="importBtn">가져오기</button></div>
+    <p id="importMsg" class="muted"></p>
+    <h2>설정</h2>
+    <label>하루 새 카드 수 <input type="number" min="1" max="200" id="newLimit"></label>
+    <h2>기록 백업</h2>
+    <div class="row"><button id="exportBtn">내보내기</button><button id="importBackupBtn">불러오기</button></div>
+    <input type="file" id="backupFile" accept="application/json,.json" hidden>
+    <p id="backupMsg" class="muted"></p>
+    <h2>신고한 카드</h2>
+    <ul id="flagList"></ul>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
