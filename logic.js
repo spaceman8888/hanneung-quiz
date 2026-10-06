@@ -114,3 +114,20 @@ export function submit(session, correct) {
   }
   return item.card;
 }
+
+export function loadJSON(storage, key, fallback) {
+  try {
+    const raw = storage.getItem(key);
+    return raw == null ? { value: fallback, ok: true } : { value: JSON.parse(raw), ok: true };
+  } catch {
+    return { value: fallback, ok: false };
+  }
+}
+
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+export function validateBackup(data) {
+  return isObj(data) && isObj(data.progress)
+    && (data.customCards === undefined || Array.isArray(data.customCards))
+    && (data.settings === undefined || (isObj(data.settings) && typeof data.settings.newLimit === 'number'));
+}

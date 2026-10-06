@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, addDays, normalize, isCorrect, isShort, schedule,
   hashId, parseQuizlet, mergeCards, pickChoices,
-  newLeft, buildBatch, createSession, submit } from '../logic.js';
+  newLeft, buildBatch, createSession, submit,
+  loadJSON, validateBackup } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -174,4 +175,35 @@ test('submit: wrong on last remaining card keeps it until answered', () => {
 test('submit: long-answer card finishes on mc', () => {
   const s = createSession([mk('L', '열한글자가넘는긴정답입니다')], {});
   assert.equal(submit(s, true).id, 'L');
+});
+
+const fakeStorage = data => ({ getItem: k => (k in data ? data[k] : null) });
+
+test('loadJSON: missing key -> fallback, ok', () => {
+  assert.deepEqual(loadJSON(fakeStorage({}), 'p', {}), { value: {}, ok: true });
+});
+
+test('loadJSON: valid JSON', () => {
+  assert.deepEqual(loadJSON(fakeStorage({ p: '{"a":1}' }), 'p', {}), { value: { a: 1 }, ok: true });
+});
+
+test('loadJSON: corrupted JSON -> fallback, not ok', () => {
+  assert.deepEqual(loadJSON(fakeStorage({ p: '{oops' }), 'p', []), { value: [], ok: false });
+});
+
+test('loadJSON: storage throws or is null -> fallback, not ok', () => {
+  const throwing = { getItem() { throw new Error('SecurityError'); } };
+  assert.deepEqual(loadJSON(throwing, 'p', 1), { value: 1, ok: false });
+  assert.deepEqual(loadJSON(null, 'p', 1), { value: 1, ok: false });
+});
+
+test('validateBackup', () => {
+  assert.ok(validateBackup({ progress: {} }));
+  assert.ok(validateBackup({ progress: {}, customCards: [], settings: { newLimit: 20 } }));
+  assert.ok(!validateBackup(null));
+  assert.ok(!validateBackup('x'));
+  assert.ok(!validateBackup({}));
+  assert.ok(!validateBackup({ progress: [] }));
+  assert.ok(!validateBackup({ progress: {}, customCards: {} }));
+  assert.ok(!validateBackup({ progress: {}, settings: { newLimit: '20' } }));
 });
