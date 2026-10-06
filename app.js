@@ -4,10 +4,19 @@ const $ = id => document.getElementById(id);
 const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const shapes = {
+  progress: isObj,
+  customCards: Array.isArray,
+  settings: v => isObj(v) && Number.isInteger(v.newLimit) && v.newLimit >= 1 && v.newLimit <= 200,
+  newToday: v => isObj(v) && typeof v.date === 'string' && Number.isFinite(v.count),
+};
+
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
-  if (!r.ok) warn('저장된 기록 일부를 읽지 못해 초기 상태로 시작합니다.');
-  return r.value;
+  if (r.ok && shapes[key](r.value)) return r.value;
+  warn('저장된 기록 일부를 읽지 못해 초기 상태로 시작합니다.');
+  return fallback;
 }
 
 function save(key, value) {
@@ -28,7 +37,8 @@ let custom = load('customCards', []);
 let progress = load('progress', {});
 let settings = load('settings', { newLimit: 20 });
 let newToday = load('newToday', { date: '', count: 0 });
-let session = null, doneCount = 0, batchSize = 0, busy = false;
+let session = null, doneCount = 0, batchSize = 0, busy = false, timer = null;
+const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => ['home', 'study', 'manage'].forEach(s => { $(s).hidden = s !== id; });
@@ -38,6 +48,7 @@ function fillEras(sel, withAll) {
 }
 
 function renderHome() {
+  cancelTimer();
   const t = L.today(), era = $('eraSelect').value;
   const cards = allCards().filter(c => !era || c.era === era);
   $('dueCount').textContent = cards.filter(c => progress[c.id]?.seen && progress[c.id].due <= t).length;
@@ -57,6 +68,7 @@ function renderHome() {
 }
 
 function startBatch() {
+  cancelTimer();
   const t = L.today();
   const batch = L.buildBatch(allCards(), progress,
     { todayStr: t, newLeft: L.newLeft(settings.newLimit, newToday, t), era: $('eraSelect').value || null });
@@ -113,7 +125,7 @@ function onAnswer(correct, button) {
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
-  if (correct) { setTimeout(() => commit(true), 500); return; }
+  if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
   if (mode === 'sa') $('feedback').append(btn('맞은 걸로 처리', () => commit(true)));
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
 }
@@ -215,7 +227,11 @@ $('quit').onclick = renderHome;
 $('toManage').onclick = renderManage;
 $('back').onclick = renderHome;
 
-try { baseCards = await (await fetch('cards.json')).json(); }
-catch { warn('기본 카드를 불러오지 못했습니다.'); }
+try {
+  const res = await fetch('cards.json');
+  const data = res.ok ? await res.json() : null;
+  if (!Array.isArray(data)) throw 0;
+  baseCards = data;
+} catch { warn('기본 카드를 불러오지 못했습니다.'); }
 renderHome();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
