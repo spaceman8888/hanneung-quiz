@@ -35,3 +35,46 @@ export function schedule(prev, { wrong }, todayStr) {
   const stage = Math.min(prev.stage + 1, INTERVALS.length - 1);
   return { stage, due: addDays(todayStr, INTERVALS[stage]), seen: true, flagged };
 }
+
+export function hashId(front, back) {
+  let h = 5381;
+  for (const ch of front + '\t' + back) h = (h * 33 + ch.codePointAt(0)) >>> 0;
+  return 'q' + h.toString(16);
+}
+
+export function parseQuizlet(text, era = '기타') {
+  const cards = [];
+  let skipped = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const i = line.indexOf('\t');
+    const front = i < 0 ? '' : line.slice(0, i).trim();
+    const back = i < 0 ? '' : line.slice(i + 1).trim();
+    if (!front || !back) { skipped++; continue; }
+    cards.push({ id: hashId(front, back), front, back, era, type: '기타' });
+  }
+  return { cards, skipped };
+}
+
+export function mergeCards(existing, incoming) {
+  const ids = new Set(existing.map(c => c.id));
+  const fresh = incoming.filter(c => !ids.has(c.id) && ids.add(c.id));
+  return { merged: [...existing, ...fresh], added: fresh.length, dup: incoming.length - fresh.length };
+}
+
+export function shuffle(arr, rng = Math.random) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function pickChoices(card, pool, rng = Math.random) {
+  const others = pool.filter(c => c.back !== card.back);
+  const near = shuffle(others.filter(c => c.era === card.era && c.type === card.type).map(c => c.back), rng);
+  const far = shuffle(others.map(c => c.back), rng);
+  const wrong = [...new Set([...near, ...far])].slice(0, 3);
+  return shuffle([card.back, ...wrong], rng);
+}
