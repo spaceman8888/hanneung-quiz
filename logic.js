@@ -78,3 +78,39 @@ export function pickChoices(card, pool, rng = Math.random) {
   const wrong = [...new Set([...near, ...far])].slice(0, 3);
   return shuffle([card.back, ...wrong], rng);
 }
+
+export function newLeft(limit, newToday, todayStr) {
+  return Math.max(0, limit - (newToday.date === todayStr ? newToday.count : 0));
+}
+
+export function buildBatch(cards, progress, { todayStr, newLeft, era = null, size = BATCH_SIZE }) {
+  const inEra = cards.filter(c => !era || c.era === era);
+  const due = inEra
+    .filter(c => progress[c.id]?.seen && progress[c.id].due <= todayStr)
+    .sort((a, b) => progress[a.id].due.localeCompare(progress[b.id].due));
+  const reviews = due.slice(0, size);
+  const fresh = inEra.filter(c => !progress[c.id]?.seen)
+    .slice(0, Math.max(0, Math.min(size - reviews.length, newLeft)));
+  return [...reviews, ...fresh];
+}
+
+export function createSession(batch, progress) {
+  return {
+    queue: batch.map(card => ({ card, mode: progress[card.id]?.seen && isShort(card.back) ? 'sa' : 'mc' })),
+    wrong: new Set(),
+  };
+}
+
+export function submit(session, correct) {
+  const item = session.queue.shift();
+  if (!correct) {
+    session.wrong.add(item.card.id);
+    session.queue.splice(Math.min(2, session.queue.length), 0, item);
+    return null;
+  }
+  if (item.mode === 'mc' && isShort(item.card.back)) {
+    session.queue.push({ card: item.card, mode: 'sa' });
+    return null;
+  }
+  return item.card;
+}

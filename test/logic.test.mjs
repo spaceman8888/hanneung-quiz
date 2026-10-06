@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, addDays, normalize, isCorrect, isShort, schedule,
-  hashId, parseQuizlet, mergeCards, pickChoices } from '../logic.js';
+  hashId, parseQuizlet, mergeCards, pickChoices,
+  newLeft, buildBatch, createSession, submit } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -104,4 +105,73 @@ test('pickChoices: prefers same era and type', () => {
   for (let i = 0; i < 20; i++) {
     assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['광종', '성종', '왕건', '현종']);
   }
+});
+
+test('newLeft: counts today only, never negative', () => {
+  assert.equal(newLeft(20, { date: '2026-10-06', count: 5 }, '2026-10-06'), 15);
+  assert.equal(newLeft(20, { date: '2026-10-05', count: 20 }, '2026-10-06'), 20);
+  assert.equal(newLeft(20, { date: '2026-10-06', count: 25 }, '2026-10-06'), 0);
+});
+
+const T = '2026-10-06';
+const cardsN = n => Array.from({ length: n }, (_, i) => mk('k' + i, 'ans' + i));
+
+test('buildBatch: due reviews first (earliest due), then new up to limit', () => {
+  const cs = cardsN(10);
+  const progress = {
+    k0: { stage: 1, due: '2026-10-06', seen: true },
+    k1: { stage: 1, due: '2026-10-01', seen: true },
+    k2: { stage: 1, due: '2026-10-07', seen: true }, // not due yet
+  };
+  const b = buildBatch(cs, progress, { todayStr: T, newLeft: 2 });
+  assert.deepEqual(b.map(c => c.id), ['k1', 'k0', 'k3', 'k4']);
+});
+
+test('buildBatch: size cap and era filter', () => {
+  const cs = [...cardsN(10), mk('j1', 'x', '조선 전기')];
+  assert.equal(buildBatch(cs, {}, { todayStr: T, newLeft: 99 }).length, 7);
+  assert.deepEqual(buildBatch(cs, {}, { todayStr: T, newLeft: 99, era: '조선 전기' }).map(c => c.id), ['j1']);
+});
+
+test('buildBatch: flag-only progress entry counts as new', () => {
+  const b = buildBatch(cardsN(1), { k0: { flagged: true } }, { todayStr: T, newLeft: 5 });
+  assert.equal(b.length, 1);
+});
+
+test('createSession: modes', () => {
+  const long = mk('L', '열한글자가넘는긴정답입니다');
+  const s = createSession([mk('a', '왕건'), mk('b', '광종'), long],
+    { b: { seen: true, stage: 0, due: T }, L: { seen: true, stage: 0, due: T } });
+  assert.deepEqual(s.queue.map(q => q.mode), ['mc', 'sa', 'mc']);
+});
+
+test('submit: mc correct -> sa later, sa correct -> done', () => {
+  const s = createSession([mk('a', '왕건'), mk('b', '광종')], {});
+  assert.equal(submit(s, true), null);           // a mc ok -> a sa at end
+  assert.deepEqual(s.queue.map(q => q.card.id + q.mode), ['bmc', 'asa']);
+  assert.equal(submit(s, true), null);           // b mc ok
+  assert.equal(submit(s, true).id, 'a');         // a sa ok -> done
+  assert.equal(submit(s, true).id, 'b');
+  assert.equal(s.queue.length, 0);
+  assert.equal(s.wrong.size, 0);
+});
+
+test('submit: wrong reinserts 2 behind and records wrong', () => {
+  const s = createSession(cardsN(4), {});
+  submit(s, false);
+  assert.deepEqual(s.queue.map(q => q.card.id), ['k1', 'k2', 'k0', 'k3']);
+  assert.ok(s.wrong.has('k0'));
+});
+
+test('submit: wrong on last remaining card keeps it until answered', () => {
+  const s = createSession([mk('a', '왕건')], { a: { seen: true, stage: 2, due: T } });
+  assert.equal(submit(s, false), null);
+  assert.equal(s.queue.length, 1);
+  assert.equal(submit(s, true).id, 'a');
+  assert.ok(s.wrong.has('a'));
+});
+
+test('submit: long-answer card finishes on mc', () => {
+  const s = createSession([mk('L', '열한글자가넘는긴정답입니다')], {});
+  assert.equal(submit(s, true).id, 'L');
 });
