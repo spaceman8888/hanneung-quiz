@@ -17,7 +17,7 @@ export function addDays(dateStr, n) {
 }
 
 export function normalize(s) {
-  return String(s).replace(/[\s.,·!?'"()\-~]/g, '').toLowerCase();
+  return String(s).replace(/[\s\p{P}ㆍ~]/gu, '').toLowerCase();
 }
 
 export function isCorrect(input, answer) {
@@ -73,9 +73,9 @@ export function shuffle(arr, rng = Math.random) {
 
 export function pickChoices(card, pool, rng = Math.random) {
   const others = pool.filter(c => c.back !== card.back);
-  const near = shuffle(others.filter(c => c.era === card.era && c.type === card.type).map(c => c.back), rng);
-  const far = shuffle(others.map(c => c.back), rng);
-  const wrong = [...new Set([...near, ...far])].slice(0, 3);
+  const sameEra = others.filter(c => c.era === card.era);
+  const tiers = [sameEra.filter(c => c.type === card.type), sameEra, others];
+  const wrong = [...new Set(tiers.flatMap(t => shuffle(t.map(c => c.back), rng)))].slice(0, 3);
   return shuffle([card.back, ...wrong], rng);
 }
 
@@ -129,5 +129,5 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 export function validateBackup(data) {
   return isObj(data) && isObj(data.progress)
     && (data.customCards === undefined || Array.isArray(data.customCards))
-    && (data.settings === undefined || (isObj(data.settings) && typeof data.settings.newLimit === 'number'));
+    && (data.settings === undefined || (isObj(data.settings) && Number.isInteger(data.settings.newLimit) && data.settings.newLimit >= 1 && data.settings.newLimit <= 200));
 }

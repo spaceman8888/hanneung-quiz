@@ -151,7 +151,8 @@ function commit(correct) {
 $('saForm').onsubmit = e => {
   e.preventDefault();
   const v = $('saInput').value;
-  if (!v.trim() || busy) return;
+  if (busy) { if (!timer && $('feedback').querySelector('button')) commit(false); return; }
+  if (!v.trim()) return;
   onAnswer(L.isCorrect(v, session.queue[0].card.back));
 };
 
@@ -182,6 +183,12 @@ $('importBtn').onclick = () => {
   save('customCards', custom);
   $('importMsg').textContent = `${added}장 추가 · 중복 ${dup}장 · 건너뛴 줄 ${skipped}개`;
   if (added) $('importText').value = '';
+};
+
+$('clearCustomBtn').onclick = () => {
+  custom = [];
+  save('customCards', custom);
+  $('importMsg').textContent = '가져온 카드를 모두 삭제했습니다';
 };
 
 $('newLimit').onchange = () => {

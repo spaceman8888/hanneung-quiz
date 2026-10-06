@@ -207,3 +207,26 @@ test('validateBackup', () => {
   assert.ok(!validateBackup({ progress: {}, customCards: {} }));
   assert.ok(!validateBackup({ progress: {}, settings: { newLimit: '20' } }));
 });
+
+test('isCorrect: unicode punctuation and Hangul middle dot', () => {
+  assert.ok(isCorrect('3ㆍ1 운동', '3·1 운동'));
+  assert.ok(isCorrect('3・1운동', '3·1 운동'));
+  assert.ok(isCorrect('귀주대첩。', '귀주 대첩'));
+});
+
+test('pickChoices: falls back era+type -> same era -> deck', () => {
+  const c = (back, era, type) => ({ back, era, type });
+  const card = c('A', '고려', '인물');
+  const pool = [card, c('B', '고려', '인물'), c('C', '고려', '사건'), c('D', '고려', '제도'),
+    c('X', '삼국', '인물'), c('Y', '조선 전기', '인물')];
+  for (let i = 0; i < 30; i++) {
+    const ch = pickChoices(card, pool);
+    assert.deepEqual([...ch].sort(), ['A', 'B', 'C', 'D']);
+  }
+});
+
+test('validateBackup: newLimit range', () => {
+  const v = n => validateBackup({ progress: {}, settings: { newLimit: n } });
+  assert.ok(!v(0) && !v(201) && !v(1.5));
+  assert.ok(v(1) && v(200));
+});
