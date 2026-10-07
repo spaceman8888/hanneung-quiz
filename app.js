@@ -88,7 +88,7 @@ function startBatch() {
     ? L.buildBatch(allCards(), progress, { tick: stats.tick, era })
     : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
   if (!batch.length) {
-    $('homeMsg').textContent = practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
+    $('homeMsg').textContent = mode !== 'normal' && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return renderHome();
   }
   batch.forEach(c => practiced.add(c.id));
@@ -206,9 +206,13 @@ function renderManage() {
   if (!flagged.length) $('flagList').textContent = '없음';
   const done = allCards().filter(c => L.entry(progress[c.id]).done);
   $('doneSummary').textContent = `완료 카드 (${done.length})`;
-  $('doneList').replaceChildren(...cardList(done, '완료 취소', c => { progress[c.id] = L.reopen(progress[c.id], stats.tick); }));
+  const q = $('doneFilter').value;
+  const shown = done.filter(c => c.front.includes(q) || c.back.includes(q));
+  $('doneList').replaceChildren(...cardList(shown, '완료 취소', c => { progress[c.id] = L.reopen(progress[c.id], stats.tick); }));
   show('manage');
 }
+
+$('doneFilter').oninput = renderManage;
 
 $('importBtn').onclick = () => {
   const { cards, skipped } = L.parseQuizlet($('importText').value, $('importEra').value);
@@ -255,7 +259,7 @@ $('backupFile').onchange = async e => {
 fillEras($('eraSelect'), true);
 fillEras($('importEra'), false);
 $('importEra').value = '기타';
-$('eraSelect').onchange = renderHome;
+$('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); };
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
 $('checkBtn').onclick = () => enterMode('check');

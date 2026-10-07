@@ -208,7 +208,7 @@ test('markKnown / relapse / reopen', () => {
   assert.deepEqual(relapse(E({ seen: true, done: true, stage: 4, streak: 3, lapses: 1 }), 50),
     E({ seen: true, stage: 0, streak: 0, lapses: 2, next: 60 }));
   assert.deepEqual(reopen(E({ seen: true, done: true, stage: 2, streak: 3 }), 99),
-    E({ seen: true, stage: 2, streak: 0, next: 99 }));
+    E({ seen: true, stage: 0, streak: 0, next: 99 }));
 });
 
 test('buildBatch: due (most lapses first) -> new -> ahead; done excluded', () => {

@@ -5,7 +5,7 @@ export const WEAK_LAPSES = 2;
 export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
 export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
-export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '기타'];
+export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '기타'];
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -54,7 +54,7 @@ export function markKnown(prev) {
 }
 
 export function reopen(prev, tick) {
-  return { ...entry(prev), done: false, streak: 0, next: tick };
+  return { ...entry(prev), done: false, stage: 0, streak: 0, next: tick };
 }
 
 export function hashId(front, back) {
