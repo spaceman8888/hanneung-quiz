@@ -62,10 +62,6 @@
       <div class="front" id="qFront"></div>
     </div>
     <div class="choices" id="choices"></div>
-    <form id="saForm" hidden>
-      <input id="saInput" autocomplete="off" placeholder="정답 입력" aria-label="정답 입력">
-      <p><button class="primary">확인</button></p>
-    </form>
     <div id="feedback"></div>
     <div class="row"><button id="known">이미 알아요</button><button id="flag">신고</button></div>
   </section>
@@ -82,6 +78,7 @@
     <div class="row"><button id="exportBtn">내보내기</button><button id="importBackupBtn">불러오기</button></div>
     <input type="file" id="backupFile" accept="application/json,.json" hidden>
     <p id="backupMsg" class="muted"></p>
+    <p id="persistMsg" class="muted"></p>
     <h2>신고한 카드</h2>
     <ul id="flagList"></ul>
     <h2>완료 카드</h2>

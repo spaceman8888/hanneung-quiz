@@ -17,11 +17,6 @@ export function normalize(s) {
   return String(s).replace(/[\s\p{P}ㆍ~]/gu, '').toLowerCase();
 }
 
-export function isCorrect(input, answer) {
-  const n = normalize(input);
-  return n !== '' && n === normalize(answer);
-}
-
 export function isShort(answer) {
   return answer.length <= SHORT_MAX;
 }
@@ -135,9 +130,9 @@ export function counts(cards, progress, tick) {
   return r;
 }
 
-export function createSession(batch, progress) {
+export function createSession(batch) {
   return {
-    queue: batch.map(card => ({ card, mode: progress[card.id]?.seen && isShort(card.back) ? 'sa' : 'mc' })),
+    queue: batch.map(card => ({ card })),
     wrong: new Set(),
   };
 }
@@ -147,10 +142,6 @@ export function submit(session, correct) {
   if (!correct) {
     session.wrong.add(item.card.id);
     session.queue.splice(Math.min(2, session.queue.length), 0, item);
-    return null;
-  }
-  if (item.mode === 'mc' && isShort(item.card.back)) {
-    session.queue.push({ card: item.card, mode: 'sa' });
     return null;
   }
   return item.card;

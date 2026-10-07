@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { today, normalize, isCorrect, isShort, ERAS,
+import { today, normalize, isShort, ERAS,
   hashId, parseQuizlet, mergeCards, pickChoices,
   entry, schedule, markKnown, relapse, reopen,
   buildBatch, practiceBatch, counts, createSession, submit,
@@ -12,14 +12,6 @@ test('today formats local date', () => {
 
 test('normalize strips spaces and punctuation', () => {
   assert.equal(normalize(' 귀주 대첩. '), '귀주대첩');
-});
-
-test('isCorrect ignores spacing/punctuation/case, rejects empty and partial', () => {
-  assert.ok(isCorrect('귀주 대첩', '귀주대첩'));
-  assert.ok(isCorrect('ABC', 'abc'));
-  assert.ok(!isCorrect('', '신문왕'));
-  assert.ok(!isCorrect('  ', '신문왕'));
-  assert.ok(!isCorrect('신문', '신문왕'));
 });
 
 test('isShort: 10 chars ok, 11 not', () => {
@@ -79,19 +71,14 @@ test('pickChoices: prefers same era and type', () => {
 const T = '2026-10-06';
 const cardsN = n => Array.from({ length: n }, (_, i) => mk('k' + i, 'ans' + i));
 
-test('createSession: modes', () => {
-  const long = mk('L', '열한글자가넘는긴정답입니다');
-  const s = createSession([mk('a', '왕건'), mk('b', '광종'), long],
-    { b: { seen: true, stage: 0, due: T }, L: { seen: true, stage: 0, due: T } });
-  assert.deepEqual(s.queue.map(q => q.mode), ['mc', 'sa', 'mc']);
+test('createSession: queue holds every batch card once, in order', () => {
+  const s = createSession([mk('a', '왕건'), mk('b', '광종')], { b: { seen: true } });
+  assert.deepEqual(s.queue.map(q => q.card.id), ['a', 'b']);
 });
 
-test('submit: mc correct -> sa later, sa correct -> done', () => {
-  const s = createSession([mk('a', '왕건'), mk('b', '광종')], {});
-  assert.equal(submit(s, true), null);           // a mc ok -> a sa at end
-  assert.deepEqual(s.queue.map(q => q.card.id + q.mode), ['bmc', 'asa']);
-  assert.equal(submit(s, true), null);           // b mc ok
-  assert.equal(submit(s, true).id, 'a');         // a sa ok -> done
+test('submit: correct answer finishes the card immediately (multiple choice only)', () => {
+  const s = createSession([mk('a', '왕건'), mk('b', '광종')], { a: { seen: true } });
+  assert.equal(submit(s, true).id, 'a');
   assert.equal(submit(s, true).id, 'b');
   assert.equal(s.queue.length, 0);
   assert.equal(s.wrong.size, 0);
@@ -112,10 +99,6 @@ test('submit: wrong on last remaining card keeps it until answered', () => {
   assert.ok(s.wrong.has('a'));
 });
 
-test('submit: long-answer card finishes on mc', () => {
-  const s = createSession([mk('L', '열한글자가넘는긴정답입니다')], {});
-  assert.equal(submit(s, true).id, 'L');
-});
 
 const fakeStorage = data => ({ getItem: k => (k in data ? data[k] : null) });
 
@@ -135,12 +118,6 @@ test('loadJSON: storage throws or is null -> fallback, not ok', () => {
   const throwing = { getItem() { throw new Error('SecurityError'); } };
   assert.deepEqual(loadJSON(throwing, 'p', 1), { value: 1, ok: false });
   assert.deepEqual(loadJSON(null, 'p', 1), { value: 1, ok: false });
-});
-
-test('isCorrect: unicode punctuation and Hangul middle dot', () => {
-  assert.ok(isCorrect('3ㆍ1 운동', '3·1 운동'));
-  assert.ok(isCorrect('3・1운동', '3·1 운동'));
-  assert.ok(isCorrect('귀주대첩。', '귀주 대첩'));
 });
 
 test('pickChoices: falls back era+type -> same era -> deck', () => {

@@ -92,7 +92,7 @@ function startBatch() {
     return renderHome();
   }
   batch.forEach(c => practiced.add(c.id));
-  session = L.createSession(batch, progress);
+  session = L.createSession(batch);
   doneCount = 0;
   batchSize = batch.length;
   show('study');
@@ -102,27 +102,19 @@ function startBatch() {
 function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
-  $('choices').replaceChildren();
-  $('saForm').hidden = true;
   $('progressText').textContent = `${MODE_LABEL[mode]} · ${doneCount} / ${batchSize}`;
   const item = session.queue[0];
   if (!item) return renderBatchDone();
-  const { card, mode: qmode } = item;
-  $('qTag').textContent = `${card.era} · ${card.type} · ${qmode === 'mc' ? '객관식' : '주관식'}`;
+  const { card } = item;
+  $('qTag').textContent = `${card.era} · ${card.type}`;
   $('qFront').textContent = card.front;
   $('flag').hidden = false;
   $('known').hidden = mode === 'check';
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
-  if (qmode === 'mc') {
-    $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
-      const b = btn(choice, () => onAnswer(choice === card.back, b));
-      return b;
-    }));
-  } else {
-    $('saForm').hidden = false;
-    $('saInput').value = '';
-    $('saInput').focus();
-  }
+  $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
+    const b = btn(choice, () => onAnswer(choice === card.back, b));
+    return b;
+  }));
 }
 
 function renderBatchDone() {
@@ -136,14 +128,13 @@ function renderBatchDone() {
 function onAnswer(correct, button) {
   if (busy) return;
   busy = true;
-  const { card, mode: qmode } = session.queue[0];
+  const { card } = session.queue[0];
   button?.classList.add(correct ? 'ok' : 'bad');
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
   if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
-  if (qmode === 'sa') $('feedback').append(btn('맞은 걸로 처리', () => commit(true)));
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
 }
 
@@ -166,14 +157,6 @@ function commit(correct) {
   }
   renderQuestion();
 }
-
-$('saForm').onsubmit = e => {
-  e.preventDefault();
-  const v = $('saInput').value;
-  if (busy) { if (!timer && $('feedback').querySelector('button')) commit(false); return; }
-  if (!v.trim()) return;
-  onAnswer(L.isCorrect(v, session.queue[0].card.back));
-};
 
 $('known').onclick = () => {
   if (busy || !session.queue[0]) return;
@@ -275,3 +258,7 @@ try {
 } catch { warn('기본 카드를 불러오지 못했습니다.'); }
 renderHome();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+navigator.storage?.persist?.().then(ok => {
+  $('persistMsg').textContent = ok ? '기록 보호: 켜짐 — 브라우저가 학습 기록을 자동으로 지우지 않습니다.'
+    : '기록 보호: 브라우저가 허용하지 않았습니다. 가끔 기록 백업을 해 두세요.';
+}).catch(() => {});
