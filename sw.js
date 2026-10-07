@@ -1,4 +1,4 @@
-const CACHE = 'v1';
+const CACHE = 'v2';
 const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'cards.json', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

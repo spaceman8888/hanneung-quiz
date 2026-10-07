@@ -51,3 +51,12 @@ test('fronts are unique after normalization', () => {
 test('original 584 cards keep their position', () => {
   cards.slice(0, 584).forEach((c, i) => assert.equal(c.id, `c${String(i + 1).padStart(4, '0')}`));
 });
+
+test('new cards ordered: tier 1 before tier 2, eras chronological within a tier', () => {
+  const added = cards.slice(584);
+  const key = c => [c.tier, ERAS.indexOf(c.era)];
+  for (let i = 1; i < added.length; i++) {
+    const [ta, ea] = key(added[i - 1]), [tb, eb] = key(added[i]);
+    assert.ok(ta < tb || (ta === tb && ea <= eb), `order: ${added[i - 1].id} before ${added[i].id}`);
+  }
+});
