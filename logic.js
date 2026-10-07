@@ -1,9 +1,6 @@
-export const GAPS = [20, 50, 120, 300, 700];
-export const RELEARN_GAP = 10;
-export const FAST_DONE_STREAK = 3;
-export const WEAK_LAPSES = 2;
 export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
+export const CHOICES = 5;
 export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
 export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '판별', '기타'];
 
@@ -21,35 +18,52 @@ export function isShort(answer) {
   return answer.length <= SHORT_MAX;
 }
 
-const BLANK = { stage: 0, next: 0, seen: false, flagged: false, lapses: 0, streak: 0, done: false };
+// FSRS-5 memory model (github.com/open-spaced-repetition), default weights.
+// grade: 1 = wrong/모르겠어요, 3 = correct, 4 = 이미 알아요. Days are integers (dayOf).
+const W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192,
+  1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
+const DECAY = -0.5, FACTOR = 19 / 81;   // recall(t = s) = 0.9, so the interval for 90% retention is s days
+export const MATURE = 21;               // 완료: still ≥ 90% recall three weeks out
+
+export function dayOf(d = new Date()) {
+  return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+}
+
+const BLANK = { s: 0, d: 0, last: 0, due: 0, lapses: 0, flagged: false };
 
 export function entry(prev) {
-  const { due, ...rest } = prev ?? {};
-  return { ...BLANK, ...rest };
+  return { ...BLANK, ...prev };
 }
 
-export function relapse(prev, tick) {
+export function recall(prev, day) {
   const p = entry(prev);
-  return { ...p, seen: true, done: false, stage: 0, streak: 0, lapses: p.lapses + 1, next: tick + RELEARN_GAP };
+  return p.s ? (1 + FACTOR * Math.max(0, day - p.last) / p.s) ** DECAY : 0;
 }
 
-export function schedule(prev, { wrong }, tick) {
+const clampD = d => Math.min(10, Math.max(1, d));
+const initD = g => clampD(W[4] - Math.exp(W[5] * (g - 1)) + 1);
+
+export function review(prev, grade, day) {
   const p = entry(prev);
-  if (!p.seen) return { ...p, seen: true, stage: 0, streak: 0, next: tick + (wrong ? RELEARN_GAP : GAPS[0]) };
-  if (wrong) return relapse(p, tick);
-  const streak = p.streak + 1;
-  const done = (p.lapses === 0 && streak >= FAST_DONE_STREAK) || p.stage === GAPS.length - 1;
-  const stage = Math.min(p.stage + 1, GAPS.length - 1);
-  const gap = p.lapses >= WEAK_LAPSES ? Math.ceil(GAPS[stage] / 2) : GAPS[stage];
-  return { ...p, stage, streak, done, next: tick + gap };
+  let s = W[grade - 1], d = initD(grade);
+  if (p.s) {
+    const r = recall(p, day);
+    d = clampD(W[7] * initD(4) + (1 - W[7]) * (p.d - W[6] * (grade - 3) * (10 - p.d) / 9));
+    s = grade === 1
+      ? Math.min(W[11] * p.d ** -W[12] * ((p.s + 1) ** W[13] - 1) * Math.exp(W[14] * (1 - r)), p.s / Math.exp(W[17] * W[18]))
+      : p.s * (1 + Math.exp(W[8]) * (11 - p.d) * p.s ** -W[9] * Math.expm1(W[10] * (1 - r))
+        * (grade === 2 ? W[15] : 1) * (grade === 4 ? W[16] : 1));
+  }
+  return { ...p, s, d, last: day, due: day + Math.max(1, Math.round(s)), lapses: p.lapses + (p.s && grade === 1 ? 1 : 0) };
 }
 
-export function markKnown(prev) {
-  return { ...entry(prev), seen: true, done: true };
-}
-
-export function reopen(prev, tick) {
-  return { ...entry(prev), done: false, stage: 0, streak: 0, next: tick };
+// v1–v6 entries ({ seen, done, lapses, ... }) become one FSRS review dated today.
+export function migrate(progress, day) {
+  return Object.fromEntries(Object.entries(progress).map(([id, p]) => {
+    if ('s' in p) return [id, p];
+    const base = { flagged: !!p.flagged, lapses: p.lapses ?? 0 };
+    return [id, p.seen ? { ...review(base, p.done ? 4 : p.lapses ? 1 : 3, day), lapses: base.lapses } : base];
+  }));
 }
 
 export function hashId(front, back) {
@@ -97,9 +111,10 @@ const nationOf = front => {
   return best;
 };
 
+export const choiceClass = c => (c.type === '시기' || c.type === '판별' ? c.type : '');
+
 export function pickChoices(card, pool, rng = Math.random) {
-  const cls = c => (c.type === '시기' || c.type === '판별' ? c.type : '');
-  const others = pool.filter(c => c.back !== card.back && cls(c) === cls(card)
+  const others = pool.filter(c => c.back !== card.back && choiceClass(c) === choiceClass(card)
     && !(card.type === '판별' && (c.front === card.front || c.back.includes(card.front))));
   const sameEra = others.filter(c => c.era === card.era);
   let tiers;
@@ -119,43 +134,44 @@ export function pickChoices(card, pool, rng = Math.random) {
       others,
     ];
   }
-  const wrong = [...new Set(tiers.flatMap(t => shuffle(t.map(c => c.back), rng)))].slice(0, 3);
+  const wrong = [...new Set(tiers.flatMap(t => shuffle(t.map(c => c.back), rng)))].slice(0, CHOICES - 1);
   return shuffle([card.back, ...wrong], rng);
 }
 
-export function buildBatch(cards, progress, { tick, era = null, type = null, size = BATCH_SIZE }) {
+export function buildBatch(cards, progress, { day, era = null, type = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type) && !p(c.id).done);
-  const seen = pool.filter(c => p(c.id).seen);
-  const due = seen.filter(c => p(c.id).next <= tick)
-    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || p(a.id).next - p(b.id).next);
-  const fresh = pool.filter(c => !p(c.id).seen);
-  const ahead = seen.filter(c => p(c.id).next > tick).sort((a, b) => p(a.id).next - p(b.id).next);
+  const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
+  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type));
+  const seen = pool.filter(c => p(c.id).s);
+  const due = seen.filter(c => p(c.id).due <= day).sort(forgot);
+  const fresh = pool.filter(c => !p(c.id).s);
+  const ahead = seen.filter(c => p(c.id).due > day).sort(forgot);
   return [...due, ...fresh, ...ahead].slice(0, size);
 }
 
-export function practiceBatch(cards, progress, { mode, skip = new Set(), era = null, size = BATCH_SIZE, rng = Math.random }) {
+export function weakBatch(cards, progress, { day, skip = new Set(), era = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  const pool = cards.filter(c => (!era || c.era === era) && !skip.has(c.id));
-  if (mode === 'check') return shuffle(pool.filter(c => p(c.id).done), rng).slice(0, size);
-  return pool.filter(c => !p(c.id).done && p(c.id).lapses > 0)
-    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || p(a.id).next - p(b.id).next)
+  return cards.filter(c => (!era || c.era === era) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
+    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || recall(progress[a.id], day) - recall(progress[b.id], day))
     .slice(0, size);
 }
 
-export function counts(cards, progress, tick) {
-  const r = { due: 0, fresh: 0, learning: 0, done: 0, weak: 0 };
+export function counts(cards, progress, day) {
+  const r = { due: 0, fresh: 0, learning: 0, done: 0, weak: 0, recall: 0 };
   for (const c of cards) {
     const p = entry(progress[c.id]);
-    if (p.done) r.done++;
-    else if (!p.seen) r.fresh++;
-    else {
-      r.learning++;
-      if (p.next <= tick) r.due++;
-      if (p.lapses > 0) r.weak++;
-    }
+    if (!p.s) { r.fresh++; continue; }
+    if (p.s >= MATURE) r.done++;
+    else { r.learning++; if (p.lapses > 0) r.weak++; }
+    if (p.due <= day) r.due++;
+    r.recall += recall(p, day);
   }
   return r;
+}
+
+// New cards per day so every card is introduced a week before the exam.
+export function dailyNew(fresh, today, exam) {
+  return Math.ceil(fresh / Math.max(1, exam - today - 7));
 }
 
 export function createSession(batch) {
@@ -188,7 +204,7 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isCount = v => Number.isInteger(v) && v >= 0;
 
 export function isStats(v) {
-  return isObj(v) && isCount(v.tick) && typeof v.date === 'string' && isCount(v.count);
+  return isObj(v) && typeof v.date === 'string' && isCount(v.count);
 }
 
 export function validateBackup(data) {
@@ -225,7 +241,7 @@ export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.r
   }
   const k = kind ?? (rng() < 0.5 ? 'first' : 'between');
   if (k === 'first') {
-    const options = pickApart(pool, 4, ORDER_GAP, rng);
+    const options = pickApart(pool, CHOICES, ORDER_GAP, rng);
     if (!options) return null;
     return { kind: k, prompt: '다음 중 가장 먼저 일어난 것은?', options, answer: options.reduce((a, b) => (b.year < a.year ? b : a)) };
   }
@@ -236,7 +252,7 @@ export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.r
     const inside = pool.filter(c => c.year >= a.year + ORDER_GAP && c.year <= b.year - ORDER_GAP);
     const outside = pool.filter(c => c.year <= a.year - ORDER_GAP || c.year >= b.year + ORDER_GAP);
     const answer = pickApart(inside, 1, 0, rng, [a, b])?.[0];
-    const wrong = answer && pickApart(outside, 3, 0, rng, [a, b, answer]);
+    const wrong = answer && pickApart(outside, CHOICES - 1, 0, rng, [a, b, answer]);
     if (wrong) return { kind: k, prompt: `(가) ${orderLabel(a)}와(과) (나) ${orderLabel(b)} 사이에 있었던 일은?`, options: shuffle([answer, ...wrong], rng), answer, ends: [a, b] };
   }
   return null;

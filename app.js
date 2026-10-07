@@ -5,7 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats };
+const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string' };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -29,22 +29,16 @@ function btn(label, onclick, cls) {
 
 let baseCards = [];
 let custom = load('customCards', []);
-let progress = load('progress', {});
-let stats = load('stats', { tick: 0, date: '', count: 0 });
+let progress = L.migrate(load('progress', {}), L.dayOf());
+let stats = load('stats', { date: '', count: 0, fresh: 0 });
+let exam = load('exam', '');
 let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제' };
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제' };
 const MODE_TYPE = { period: '시기', judge: '판별' };
-const SCHEDULED = new Set(['normal', 'period', 'judge']);
-const EMPTY_MSG = {
-  period: '시기 문제를 모두 완료했어요!',
-  judge: '보기 판별 문제를 모두 완료했어요!',
-  normal: '모든 카드를 완료했어요! 완료 카드 점검으로 확인해 보세요.',
-  weak: '자주 틀린 카드가 없어요.',
-  check: '완료 카드가 없어요.',
-};
+const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.' };
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => {
@@ -53,6 +47,8 @@ const show = id => {
 };
 const goHome = () => (history.state ? history.back() : renderHome());
 const todayCount = () => (stats.date === L.today() ? stats.count : 0);
+const todayFresh = () => (stats.date === L.today() ? stats.fresh ?? 0 : 0);
+const examDay = () => (exam ? L.dayOf(new Date(exam + 'T00:00')) : null);
 
 function fillEras(sel, withAll) {
   sel.replaceChildren(...(withAll ? [new Option('전체 시대', '')] : []), ...L.ERAS.map(e => new Option(e, e)));
@@ -61,21 +57,27 @@ function fillEras(sel, withAll) {
 function renderHome() {
   cancelTimer();
   const era = $('eraSelect').value;
-  const n = L.counts(allCards().filter(c => !era || c.era === era), progress, stats.tick);
-  const pn = L.counts(allCards().filter(c => c.type === '시기' && (!era || c.era === era)), progress, stats.tick);
-  $('periodBtn').textContent = `시기 맞히기 (${pn.fresh + pn.learning})`;
-  const jn = L.counts(allCards().filter(c => c.type === '판별' && (!era || c.era === era)), progress, stats.tick);
-  $('judgeBtn').textContent = `보기 판별 (${jn.fresh + jn.learning})`;
+  const day = L.dayOf();
+  const inEra = allCards().filter(c => !era || c.era === era);
+  const n = L.counts(inEra, progress, day);
+  const pn = L.counts(inEra.filter(c => c.type === '시기'), progress, day);
+  $('periodBtn').textContent = `시기 맞히기 (${pn.due + pn.fresh})`;
+  const jn = L.counts(inEra.filter(c => c.type === '판별'), progress, day);
+  $('judgeBtn').textContent = `보기 판별 (${jn.due + jn.fresh})`;
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
   $('todayCount').textContent = todayCount();
   $('weakBtn').textContent = `자주 틀린 카드 (${n.weak})`;
-  $('checkBtn').textContent = `완료 카드 점검 (${n.done})`;
+  $('recall').textContent = `지금 기억하는 카드: 약 ${Math.round(100 * n.recall / Math.max(1, inEra.length))}%`;
+  const ex = examDay();
+  $('plan').textContent = ex === null ? '관리에서 시험일을 정하면 하루 목표를 알려 드려요.'
+    : ex <= day ? '시험일이 지났어요. 관리에서 다음 시험일을 정해 주세요.'
+    : `시험까지 D-${ex - day} · 오늘 새 카드 ${todayFresh()} / 목표 ${L.dailyNew(L.counts(allCards(), progress, day).fresh, day, ex)}장 · 오늘 복습은 매일 모두`;
   $('eraTable').replaceChildren(...L.ERAS.map(e => {
     const inEra = allCards().filter(c => c.era === e);
     if (!inEra.length) return null;
-    const k = L.counts(inEra, progress, stats.tick);
+    const k = L.counts(inEra, progress, day);
     const b = btn('', () => { $('eraSelect').value = e; enterMode('normal'); }, 'eraRow');
     const name = document.createElement('span'), count = document.createElement('span');
     name.textContent = e;
@@ -98,11 +100,12 @@ function startBatch() {
   cancelTimer();
   if (mode === 'order') return renderOrder();
   const era = $('eraSelect').value || null;
-  const batch = SCHEDULED.has(mode)
-    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era, type: MODE_TYPE[mode] ?? null })
-    : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
+  const day = L.dayOf();
+  const batch = mode === 'weak'
+    ? L.weakBatch(allCards(), progress, { day, skip: practiced, era })
+    : L.buildBatch(allCards(), progress, { day, era, type: MODE_TYPE[mode] ?? null });
   if (!batch.length) {
-    $('homeMsg').textContent = !SCHEDULED.has(mode) && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
+    $('homeMsg').textContent = mode === 'weak' && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return goHome();
   }
   batch.forEach(c => practiced.add(c.id));
@@ -123,11 +126,12 @@ function renderQuestion() {
   $('qTag').textContent = `${card.era} · ${card.type}`;
   $('qFront').textContent = card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
   $('flag').hidden = false;
-  $('known').hidden = mode === 'check';
+  $('known').hidden = false;
   $('dunno').hidden = false;
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
   $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
     const b = btn(choice, () => onAnswer(choice === card.back, b));
+    b.dataset.choice = choice;
     return b;
   }));
 }
@@ -138,14 +142,16 @@ function onAnswer(correct, button) {
   const { card } = session.queue[0];
   const id = card.id;
   if (!session.saved.has(id)) {
-    if (SCHEDULED.has(mode)) progress[id] = L.schedule(progress[id], { wrong: !correct }, stats.tick);
-    else if (!correct) progress[id] = L.relapse(progress[id], stats.tick);
+    grade(card, correct ? 3 : 1);
     session.saved.add(id);
-    save('progress', progress);
   }
   if (correct) { bumpStats(); doneCount++; }
   button?.classList.add(correct ? 'ok' : 'bad');
-  if (!correct) [...$('choices').children].find(b => b.textContent === card.back)?.classList.add('ok');
+  for (const b of $('choices').children) {
+    if (b.dataset.choice === card.back) { b.classList.add('ok'); continue; }
+    const who = ownerOf(card, b.dataset.choice);
+    if (who) { const s = document.createElement('small'); s.textContent = who; b.append(s); }
+  }
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
@@ -154,8 +160,22 @@ function onAnswer(correct, button) {
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
 }
 
+function grade(card, g) {
+  const isNew = !L.entry(progress[card.id]).s;
+  progress[card.id] = L.review(progress[card.id], g, L.dayOf());
+  save('progress', progress);
+  if (isNew) { stats = { ...stats, date: L.today(), count: todayCount(), fresh: todayFresh() + 1 }; save('stats', stats); }
+}
+
+// What a wrong option actually belongs to, so every miss teaches the distinction.
+function ownerOf(card, choice) {
+  if (card.type === '시기') return null;
+  const same = allCards().filter(c => c.back === choice && L.choiceClass(c) === L.choiceClass(card));
+  return (same.find(c => c.era === card.era) ?? same[0])?.front;
+}
+
 function bumpStats() {
-  stats = { tick: stats.tick + 1, date: L.today(), count: todayCount() + 1 };
+  stats = { ...stats, date: L.today(), count: todayCount() + 1, fresh: todayFresh() };
   save('stats', stats);
 }
 
@@ -208,8 +228,7 @@ $('dunno').onclick = () => (mode === 'order' ? onOrderAnswer(null) : onAnswer(fa
 $('known').onclick = () => {
   if (busy || !session.queue[0]) return;
   const { card } = session.queue.shift();
-  progress[card.id] = L.markKnown(progress[card.id]);
-  save('progress', progress);
+  grade(card, 4);
   doneCount++;
   renderQuestion();
 };
@@ -234,11 +253,12 @@ function renderManage() {
   const flagged = allCards().filter(c => progress[c.id]?.flagged);
   $('flagList').replaceChildren(...cardList(flagged, '해제', c => { progress[c.id].flagged = false; }));
   if (!flagged.length) $('flagList').textContent = '없음';
-  const done = allCards().filter(c => L.entry(progress[c.id]).done);
+  const done = allCards().filter(c => L.entry(progress[c.id]).s >= L.MATURE);
   $('doneSummary').textContent = `완료 카드 (${done.length})`;
   const q = $('doneFilter').value;
   const shown = done.filter(c => c.front.includes(q) || c.back.includes(q));
-  $('doneList').replaceChildren(...cardList(shown, '완료 취소', c => { progress[c.id] = L.reopen(progress[c.id], stats.tick); }));
+  $('doneList').replaceChildren(...cardList(shown, '처음부터', c => { progress[c.id] = { flagged: !!progress[c.id]?.flagged }; }));
+  $('examDate').value = exam;
   show('manage');
 }
 
@@ -260,7 +280,7 @@ $('clearCustomBtn').onclick = () => {
 };
 
 $('exportBtn').onclick = () => {
-  const data = { version: 2, progress, customCards: custom, stats };
+  const data = { version: 3, progress, customCards: custom, stats, exam };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `hanneung-backup-${L.today()}.json`;
@@ -279,10 +299,11 @@ $('backupFile').onchange = async e => {
     $('backupMsg').textContent = '올바른 백업 파일이 아닙니다. 기존 기록은 그대로입니다.';
     return;
   }
-  progress = data.progress;
+  progress = L.migrate(data.progress, L.dayOf());
   custom = data.customCards ?? custom;
   stats = data.stats ?? stats;
-  save('progress', progress); save('customCards', custom); save('stats', stats);
+  if (typeof data.exam === 'string') exam = data.exam;
+  save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam);
   $('backupMsg').textContent = '불러오기 완료';
 };
 
@@ -295,7 +316,7 @@ $('judgeBtn').onclick = () => enterMode('judge');
 $('orderBtn').onclick = () => enterMode('order');
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
-$('checkBtn').onclick = () => enterMode('check');
+$('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
 $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
 $('back').onclick = goHome;

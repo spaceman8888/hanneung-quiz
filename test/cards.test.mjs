@@ -60,8 +60,11 @@ test('판별 cards: (front, back) unique and back not in front', () => {
   }
 });
 
-test('original 584 cards keep their position', () => {
-  cards.slice(0, 584).forEach((c, i) => assert.equal(c.id, `c${String(i + 1).padStart(4, '0')}`));
+test('original cards (c0001–c0584) come first, in id order', () => {
+  const n = c => Number(c.id.slice(1));
+  const orig = cards.filter(c => n(c) <= 584);
+  assert.deepEqual(cards.slice(0, orig.length), orig);
+  orig.forEach((c, i) => i && assert.ok(n(orig[i - 1]) < n(c)));
 });
 
 test('new cards ordered: tier 1 before tier 2, eras chronological within a tier', () => {

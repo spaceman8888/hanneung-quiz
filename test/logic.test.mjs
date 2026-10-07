@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, normalize, isShort, ERAS,
   hashId, parseQuizlet, mergeCards, pickChoices, orderLabel, makeOrderQuestion,
-  entry, schedule, markKnown, relapse, reopen,
-  buildBatch, practiceBatch, counts, createSession, submit,
+  entry, review, recall, migrate, dayOf, dailyNew, MATURE,
+  buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats } from '../logic.js';
 
 test('today formats local date', () => {
@@ -46,12 +46,12 @@ test('mergeCards: importing same set twice adds nothing', () => {
 
 const mk = (id, back, era = '고려', type = '인물') => ({ id, front: 'f' + id, back, era, type });
 
-test('pickChoices: 4 unique choices including answer', () => {
-  const pool = [mk(1, '왕건'), mk(2, '광종'), mk(3, '성종'), mk(4, '현종'), mk(5, '숙종')];
+test('pickChoices: 5 unique choices including answer (like the exam)', () => {
+  const pool = [mk(1, '왕건'), mk(2, '광종'), mk(3, '성종'), mk(4, '현종'), mk(5, '숙종'), mk(6, '문종')];
   const ch = pickChoices(pool[0], pool);
-  assert.equal(ch.length, 4);
+  assert.equal(ch.length, 5);
   assert.ok(ch.includes('왕건'));
-  assert.equal(new Set(ch).size, 4);
+  assert.equal(new Set(ch).size, 5);
 });
 
 test('pickChoices: tiny pool and duplicate answers give no duplicates', () => {
@@ -64,7 +64,7 @@ test('pickChoices: prefers same era and type', () => {
   const pool = [mk(1, '왕건'), mk(2, '광종'), mk(3, '성종'), mk(4, '현종'),
     mk(5, '세종', '조선 전기'), mk(6, '태조', '조선 전기'), mk(7, '별무반', '고려', '단체')];
   for (let i = 0; i < 20; i++) {
-    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['광종', '성종', '왕건', '현종']);
+    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['광종', '별무반', '성종', '왕건', '현종']);
   }
 });
 
@@ -127,131 +127,111 @@ test('pickChoices: falls back era+type -> same era -> deck', () => {
     c('X', '삼국', '인물'), c('Y', '조선 전기', '인물')];
   for (let i = 0; i < 30; i++) {
     const ch = pickChoices(card, pool);
-    assert.deepEqual([...ch].sort(), ['A', 'B', 'C', 'D']);
+    assert.equal(ch.length, 5);
+    assert.ok(['A', 'B', 'C', 'D'].every(x => ch.includes(x)), ch.join());
   }
 });
 
-const E = o => ({ ...entry(undefined), ...o });
-
-test('entry: defaults and v1 migration drops due', () => {
-  assert.deepEqual(entry(undefined), { stage: 0, next: 0, seen: false, flagged: false, lapses: 0, streak: 0, done: false });
-  assert.deepEqual(entry({ stage: 2, due: '2026-10-06', seen: true, flagged: true }),
-    { stage: 2, next: 0, seen: true, flagged: true, lapses: 0, streak: 0, done: false });
+test('dayOf: consecutive local days differ by 1', () => {
+  assert.equal(dayOf(new Date(2026, 9, 8, 23, 59)) - dayOf(new Date(2026, 9, 7, 0, 1)), 1);
 });
 
-test('schedule: first learning (mistakes not counted as lapses)', () => {
-  assert.deepEqual(schedule(undefined, { wrong: false }, 100), E({ seen: true, next: 120 }));
-  assert.deepEqual(schedule(undefined, { wrong: true }, 100), E({ seen: true, next: 110 }));
-  assert.deepEqual(schedule({ flagged: true }, { wrong: false }, 0), E({ seen: true, flagged: true, next: 20 }));
+test('review: new card initial stability by grade, interval = stability', () => {
+  const g3 = review(undefined, 3, 100);
+  assert.ok(Math.abs(g3.s - 3.173) < 1e-9);
+  assert.deepEqual([g3.last, g3.due, g3.lapses], [100, 103, 0]);
+  assert.equal(review(undefined, 1, 100).due, 101);        // relearn tomorrow (in-session repeats come first)
+  assert.equal(review(undefined, 4, 100).due, 116);        // 이미 알아요 -> checked again in ~2 weeks
+  assert.equal(review({ flagged: true }, 3, 0).flagged, true);
 });
 
-test('schedule: correct reviews climb GAPS', () => {
-  let p = schedule(undefined, { wrong: false }, 0);
-  p = schedule(p, { wrong: false }, 20);
-  assert.deepEqual(p, E({ seen: true, stage: 1, streak: 1, next: 70 }));
-  p = schedule(p, { wrong: false }, 70);
-  assert.deepEqual(p, E({ seen: true, stage: 2, streak: 2, next: 190 }));
+test('review: correct answers on time grow the interval; difficulty stays in [1, 10]', () => {
+  let p, day = 0;
+  const gaps = [];
+  for (let i = 0; i < 5; i++) { p = review(p, 3, day); gaps.push(p.due - day); day = p.due; }
+  for (let i = 1; i < gaps.length; i++) assert.ok(gaps[i] > gaps[i - 1] * 2, gaps.join());
+  assert.ok(p.d >= 1 && p.d <= 10);
 });
 
-test('schedule: never-wrong card is done after 3 correct reviews', () => {
-  let p = schedule(undefined, { wrong: false }, 0);
-  for (const t of [20, 70]) p = schedule(p, { wrong: false }, t);
-  assert.equal(p.done, false);
-  p = schedule(p, { wrong: false }, 190);
-  assert.equal(p.done, true);
-  assert.equal(p.streak, 3);
+test('review: wrong on a seen card is a lapse, shrinks stability, raises difficulty', () => {
+  const p = review(review(undefined, 3, 0), 3, 3);
+  const q = review(p, 1, p.due);
+  assert.equal(q.lapses, 1);
+  assert.ok(q.s < p.s && q.d > p.d);
+  assert.equal(review(undefined, 1, 0).lapses, 0);         // first sight is learning, not a lapse
 });
 
-test('schedule: review wrong -> lapse, reset, relearn gap', () => {
-  const prev = E({ seen: true, stage: 3, streak: 2 });
-  assert.deepEqual(schedule(prev, { wrong: true }, 500), E({ seen: true, stage: 0, streak: 0, lapses: 1, next: 510 }));
+test('review: reviewing again the same day barely changes stability', () => {
+  const p = review(undefined, 3, 0);
+  assert.ok(review(p, 3, 0).s - p.s < 1e-9);
 });
 
-test('schedule: lapsed card is done only after a correct review at the last stage', () => {
-  let p = schedule(E({ seen: true, lapses: 1, stage: 3, streak: 5 }), { wrong: false }, 0);
-  assert.deepEqual([p.stage, p.done, p.next], [4, false, 700]);
-  p = schedule(p, { wrong: false }, 700);
-  assert.deepEqual([p.stage, p.done], [4, true]);
+test('recall: 90% at t = stability, 0 for unseen, decreasing', () => {
+  const p = review(undefined, 3, 0);
+  assert.ok(Math.abs(recall({ ...p, s: 10, last: 0 }, 10) - 0.9) < 1e-9);
+  assert.equal(recall(undefined, 5), 0);
+  assert.ok(recall(p, 1) > recall(p, 5));
 });
 
-test('schedule: weak card (lapses >= 2) gets half gaps, rounded up', () => {
-  const p = schedule(E({ seen: true, lapses: 2, stage: 1 }), { wrong: false }, 0);
-  assert.deepEqual([p.stage, p.next], [2, 60]);
-  assert.equal(schedule(E({ seen: true, lapses: 3 }), { wrong: false }, 0).next, 25);
+test('migrate: old entries become one review dated today; FSRS entries kept', () => {
+  const m = migrate({
+    a: { seen: true, done: true, lapses: 2, flagged: true },
+    b: { seen: true, stage: 1, lapses: 0 },
+    c: { seen: true, lapses: 1 },
+    d: { flagged: true },
+    e: { s: 5, d: 5, last: 1, due: 6, lapses: 0 },
+  }, 100);
+  assert.deepEqual([m.a.due, m.a.lapses, m.a.flagged], [116, 2, true]);
+  assert.equal(m.b.due, 103);
+  assert.deepEqual([m.c.due, m.c.lapses], [101, 1]);
+  assert.deepEqual(m.d, { flagged: true, lapses: 0 });
+  assert.deepEqual(m.e, { s: 5, d: 5, last: 1, due: 6, lapses: 0 });
+  assert.deepEqual(migrate(m, 200), m);
 });
 
-test('markKnown / relapse / reopen', () => {
-  assert.deepEqual(markKnown(undefined), E({ seen: true, done: true }));
-  assert.deepEqual(relapse(E({ seen: true, done: true, stage: 4, streak: 3, lapses: 1 }), 50),
-    E({ seen: true, stage: 0, streak: 0, lapses: 2, next: 60 }));
-  assert.deepEqual(reopen(E({ seen: true, done: true, stage: 2, streak: 3 }), 99),
-    E({ seen: true, stage: 0, streak: 0, next: 99 }));
-});
+const S = (s, last, due, lapses = 0) => ({ s, d: 5, last, due, lapses });
 
-test('buildBatch: due (most lapses first) -> new -> ahead; done excluded', () => {
+test('buildBatch: due (least remembered first) -> new -> ahead; mature cards still come back', () => {
   const progress = {
-    k0: E({ seen: true, next: 5 }),
-    k1: E({ seen: true, next: 3, lapses: 2 }),
-    k2: E({ seen: true, next: 50 }),
-    k3: E({ seen: true, done: true }),
-    k4: E({ seen: true, next: 1 }),
+    k0: S(2, 0, 2),            // due, recall at day 10 lower than k4
+    k1: S(30, 0, 30),          // ahead
+    k3: S(40, 0, 9),           // mature but due
+    k4: S(9, 0, 9),
   };
-  const ids = buildBatch(cardsN(10), progress, { tick: 10, size: 10 }).map(c => c.id);
-  assert.deepEqual(ids, ['k1', 'k4', 'k0', 'k5', 'k6', 'k7', 'k8', 'k9', 'k2']);
+  const ids = buildBatch(cardsN(6), progress, { day: 10, size: 10 }).map(c => c.id);
+  assert.deepEqual(ids, ['k0', 'k4', 'k3', 'k2', 'k5', 'k1']);
 });
 
-test('buildBatch: size cap and era filter', () => {
-  const cs = [...cardsN(10), mk('j1', 'x', '조선 전기')];
-  assert.equal(buildBatch(cs, {}, { tick: 0 }).length, 7);
-  assert.deepEqual(buildBatch(cs, {}, { tick: 0, era: '조선 전기' }).map(c => c.id), ['j1']);
+test('buildBatch: size cap, era and type filter', () => {
+  const cs = [...cardsN(10), mk('j1', 'x', '조선 전기'), { ...mk('b', '세종'), type: '시기' }];
+  assert.equal(buildBatch(cs, {}, { day: 0 }).length, 7);
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, era: '조선 전기' }).map(c => c.id), ['j1']);
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, type: '시기' }).map(c => c.id), ['b']);
 });
 
-test('buildBatch: never empty until everything is done', () => {
-  const ahead = { k0: E({ seen: true, next: 900 }), k1: E({ seen: true, next: 800 }) };
-  assert.deepEqual(buildBatch(cardsN(2), ahead, { tick: 0 }).map(c => c.id), ['k1', 'k0']);
-  const done = { k0: E({ seen: true, done: true }), k1: E({ seen: true, done: true }) };
-  assert.equal(buildBatch(cardsN(2), done, { tick: 0 }).length, 0);
-});
-
-test('buildBatch: v1 progress entries are due immediately', () => {
-  const b = buildBatch(cardsN(3), { k2: { stage: 1, due: '2026-10-09', seen: true } }, { tick: 0 });
-  assert.equal(b[0].id, 'k2');
-});
-
-test('practiceBatch weak: not done, lapses > 0, most lapses first, skip honored', () => {
-  const progress = {
-    k0: E({ seen: true, lapses: 1, next: 9 }),
-    k1: E({ seen: true, lapses: 3 }),
-    k2: E({ seen: true, lapses: 1, next: 2 }),
-    k3: E({ seen: true, lapses: 5, done: true }),
-  };
-  assert.deepEqual(practiceBatch(cardsN(5), progress, { mode: 'weak' }).map(c => c.id), ['k1', 'k2', 'k0']);
-  assert.deepEqual(practiceBatch(cardsN(5), progress, { mode: 'weak', skip: new Set(['k1']) }).map(c => c.id), ['k2', 'k0']);
-});
-
-test('practiceBatch check: only done cards, size cap, era filter', () => {
-  const cs = [...cardsN(10), mk('j1', 'x', '조선 전기')];
-  const progress = Object.fromEntries(cs.map(c => [c.id, E({ seen: true, done: true })]));
-  progress.k0 = E({ seen: true });
-  const b = practiceBatch(cs, progress, { mode: 'check' });
-  assert.equal(b.length, 7);
-  assert.ok(b.every(c => c.id !== 'k0'));
-  assert.deepEqual(practiceBatch(cs, progress, { mode: 'check', era: '조선 전기' }).map(c => c.id), ['j1']);
+test('weakBatch: lapsed and not mature, most lapses first, skip honored', () => {
+  const progress = { k0: S(3, 0, 3, 1), k1: S(3, 0, 3, 3), k2: S(1, 0, 1, 1), k3: S(50, 0, 50, 5) };
+  assert.deepEqual(weakBatch(cardsN(5), progress, { day: 4 }).map(c => c.id), ['k1', 'k2', 'k0']);
+  assert.deepEqual(weakBatch(cardsN(5), progress, { day: 4, skip: new Set(['k1']) }).map(c => c.id), ['k2', 'k0']);
 });
 
 test('counts', () => {
-  const progress = {
-    k0: E({ seen: true, next: 0, lapses: 1 }),
-    k1: E({ seen: true, next: 99 }),
-    k2: E({ seen: true, done: true, lapses: 2 }),
-  };
-  assert.deepEqual(counts(cardsN(5), progress, 10), { due: 1, fresh: 2, learning: 2, done: 1, weak: 1 });
+  const progress = { k0: S(3, 0, 3, 1), k1: S(30, 0, 30), k2: S(MATURE, 0, 5, 2) };
+  const r = counts(cardsN(5), progress, 5);
+  assert.deepEqual({ ...r, recall: undefined }, { due: 2, fresh: 2, learning: 1, done: 2, weak: 1, recall: undefined });
+  assert.ok(r.recall > 2 && r.recall < 3);
+});
+
+test('dailyNew: spread new cards to finish a week before the exam', () => {
+  assert.equal(dailyNew(300, 0, 37), 10);
+  assert.equal(dailyNew(300, 0, 5), 300);
 });
 
 test('isStats', () => {
-  assert.ok(isStats({ tick: 0, date: '', count: 0 }));
-  assert.ok(!isStats({ tick: 0, date: 1, count: 0 }));
-  assert.ok(!isStats({ tick: -1, date: '', count: 0 }));
+  assert.ok(isStats({ date: '', count: 0 }));
+  assert.ok(isStats({ tick: 3, date: '', count: 0, fresh: 2 }));
+  assert.ok(!isStats({ date: 1, count: 0 }));
+  assert.ok(!isStats({ date: '', count: -1 }));
   assert.ok(!isStats(null));
 });
 
@@ -264,7 +244,7 @@ test('validateBackup: v2 and v1 backups', () => {
   assert.ok(!validateBackup({}));
   assert.ok(!validateBackup({ progress: [] }));
   assert.ok(!validateBackup({ progress: {}, customCards: {} }));
-  assert.ok(!validateBackup({ progress: {}, stats: { tick: 1.5, date: '', count: 0 } }));
+  assert.ok(!validateBackup({ progress: {}, stats: { date: '', count: 1.5 } }));
 });
 
 test('ERAS has 통시대 before 기타', () => {
@@ -277,7 +257,8 @@ test('pickChoices: same kind first (sites with sites)', () => {
   const pool = [s(1, '송국리 유적'), s(2, '붉은 간토기'), s(3, '세형 동검'), s(4, '거친무늬 거울'),
     s(5, '암사동 유적'), s(6, '흔암리 유적'), s(7, '전곡리 유적')];
   for (let i = 0; i < 20; i++) {
-    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['송국리 유적', '암사동 유적', '전곡리 유적', '흔암리 유적']);
+    const ch = pickChoices(pool[0], pool);
+    assert.ok(['송국리 유적', '암사동 유적', '전곡리 유적', '흔암리 유적'].every(x => ch.includes(x)), ch.join());
   }
 });
 
@@ -285,7 +266,8 @@ test('pickChoices: kings with kings (same last character)', () => {
   const k = (id, back) => ({ id, front: 'f' + id, back, era: '통일신라·발해', type: '인물' });
   const pool = [k(1, '신문왕'), k(2, '김대성'), k(3, '성덕왕'), k(4, '최치원'), k(5, '경덕왕'), k(6, '장보고'), k(7, '원성왕')];
   for (let i = 0; i < 20; i++) {
-    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['경덕왕', '성덕왕', '신문왕', '원성왕']);
+    const ch = pickChoices(pool[0], pool);
+    assert.ok(['경덕왕', '성덕왕', '신문왕', '원성왕'].every(x => ch.includes(x)), ch.join());
   }
 });
 
@@ -311,7 +293,7 @@ test('pickChoices: 시기 distractors prefer kings of the same country (first co
     p(3, '발해 해동성국 — 어느 왕 때?', '선왕'),
     p(4, '신라의 녹읍 폐지 — 어느 왕 때?', '신문왕'), p(5, '신라의 정전 지급 — 어느 왕 때?', '성덕왕'),
     p(6, '신라 독서삼품과 — 어느 왕 때?', '원성왕'), p(7, '신라의 발해 공격 — 어느 왕 때?', '성덕왕'),
-    p(8, '신라의 청해진 설치 — 어느 왕 때?', '흥덕왕'),
+    p(8, '신라의 청해진 설치 — 어느 왕 때?', '흥덕왕'), p(9, '신라 김헌창의 난 — 어느 왕 때?', '헌덕왕'),
   ];
   for (let i = 0; i < 30; i++) {
     const ch = pickChoices(pool[0], pool);
@@ -333,12 +315,12 @@ test('orderLabel: 시기 strips the question ending, others use back', () => {
   assert.equal(orderLabel({ type: '사건', front: 'x', back: '귀주 대첩' }), '귀주 대첩');
 });
 
-test('makeOrderQuestion first: 4 options ≥ gap apart, distinct labels, answer is earliest', () => {
+test('makeOrderQuestion first: 5 options ≥ gap apart, distinct labels, answer is earliest', () => {
   for (let s = 1; s <= 40; s++) {
     const q = makeOrderQuestion(dated, { kind: 'first', rng: seeded(s) });
     assert.ok(q);
-    assert.equal(q.options.length, 4);
-    assert.equal(new Set(q.options.map(orderLabel)).size, 4);
+    assert.equal(q.options.length, 5);
+    assert.equal(new Set(q.options.map(orderLabel)).size, 5);
     for (const a of q.options) for (const b of q.options) if (a !== b) assert.ok(Math.abs(a.year - b.year) >= 3);
     assert.equal(q.answer.year, Math.min(...q.options.map(o => o.year)));
   }
@@ -351,7 +333,7 @@ test('makeOrderQuestion between: answer inside, wrong outside, ends not among op
     if (!q) continue;
     made++;
     const [a, b] = q.ends;
-    assert.equal(q.options.length, 4);
+    assert.equal(q.options.length, 5);
     assert.ok(q.options.includes(q.answer));
     assert.ok(q.answer.year >= a.year + 3 && q.answer.year <= b.year - 3);
     for (const o of q.options) if (o !== q.answer) assert.ok(o.year <= a.year - 3 || o.year >= b.year + 3);
@@ -379,7 +361,7 @@ test('pickChoices 판별: never another fact of the same subject; same group fir
   ];
   for (let i = 0; i < 30; i++) {
     const ch = pickChoices(pool[0], pool);
-    assert.deepEqual([...ch].sort(), ['12목 설치', '5도 양계 정비', '경정 전시과', '노비안검법 실시'].sort());
+    assert.deepEqual([...ch].sort(), ['12목 설치', '5도 양계 정비', '경정 전시과', '노비안검법 실시', '시무 28조 건의'].sort());
   }
   assert.ok(!pickChoices(pool[6], pool).some(b => ['12목 설치', '과거제 시행'].includes(b)));
 });

@@ -19,6 +19,7 @@
   button { padding:12px 16px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   .primary { background:var(--accent); color:#fff; border-color:var(--accent); width:100%; }
   .choices button { display:block; width:100%; margin:8px 0; text-align:left; }
+  .choices small { display:block; color:var(--muted); font-size:13px; margin-top:4px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin:12px 0; }
   .front { font-size:21px; font-weight:600; min-height:3em; word-break:keep-all; }
   .tag, .muted { color:var(--muted); font-size:14px; }
@@ -42,18 +43,20 @@
   <section id="home">
     <header><h1>한능검 암기 <small id="version" class="muted"></small></h1><button id="toManage">관리</button></header>
     <div class="card stats">
-      <div><b id="dueCount">0</b>다시 볼 카드</div>
+      <div><b id="dueCount">0</b>오늘 복습</div>
       <div><b id="newCount">0</b>새 카드</div>
       <div><b id="doneCount">0</b>완료</div>
       <div><b id="todayCount">0</b>오늘 푼 카드</div>
     </div>
+    <p id="plan" class="muted"></p>
+    <p id="recall" class="muted"></p>
     <select id="eraSelect" aria-label="시대 선택"></select>
     <p><button class="primary" id="start">학습 시작</button></p>
     <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
     <div class="row"><button id="orderBtn">순서 문제</button></div>
-    <div class="row"><button id="weakBtn">자주 틀린 카드</button><button id="checkBtn">완료 카드 점검</button></div>
+    <div class="row"><button id="weakBtn">자주 틀린 카드</button></div>
     <p id="homeMsg" class="muted"></p>
-    <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습</p>
+    <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습<br>완료 = 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 점점 넓혀 다시 나옵니다.</p>
     <div id="eraTable"></div>
   </section>
 
@@ -70,6 +73,9 @@
 
   <section id="manage" hidden>
     <header><button id="back">← 홈</button><h1>관리</h1></header>
+    <h2>시험일</h2>
+    <input type="date" id="examDate" aria-label="시험일">
+    <p class="muted">시험 일주일 전까지 모든 카드를 한 번씩 배우도록 하루 새 카드 목표를 계산합니다.</p>
     <h2>Quizlet 가져오기</h2>
     <p class="muted">Quizlet 세트 → ⋯ → 내보내기 → "용어와 정의 사이: 탭", "카드 사이: 새 줄"로 복사한 뒤 붙여넣기</p>
     <textarea id="importText" aria-label="Quizlet 내보내기 텍스트"></textarea>
