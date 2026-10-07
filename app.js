@@ -43,7 +43,11 @@ const EMPTY_MSG = {
 };
 
 const allCards = () => [...baseCards, ...custom];
-const show = id => ['home', 'study', 'manage'].forEach(s => { $(s).hidden = s !== id; });
+const show = id => {
+  ['home', 'study', 'manage'].forEach(s => { $(s).hidden = s !== id; });
+  if (id !== 'home' && !history.state) history.pushState(1, '');
+};
+const goHome = () => (history.state ? history.back() : renderHome());
 const todayCount = () => (stats.date === L.today() ? stats.count : 0);
 
 function fillEras(sel, withAll) {
@@ -122,7 +126,7 @@ function renderBatchDone() {
   $('qFront').textContent = `묶음 완료! (${batchSize}장)`;
   $('flag').hidden = true;
   $('known').hidden = true;
-  $('choices').replaceChildren(btn('다음 묶음', startBatch, 'primary'), btn('홈으로', renderHome));
+  $('choices').replaceChildren(btn('다음 묶음', startBatch, 'primary'), btn('홈으로', goHome));
 }
 
 function onAnswer(correct, button) {
@@ -246,9 +250,11 @@ $('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); }
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
 $('checkBtn').onclick = () => enterMode('check');
-$('quit').onclick = renderHome;
+$('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
-$('back').onclick = renderHome;
+$('back').onclick = goHome;
+window.onpopstate = renderHome;
+$('version').textContent = self.APP_VERSION ?? '';
 
 try {
   const res = await fetch('cards.json');
