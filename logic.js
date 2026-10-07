@@ -5,7 +5,7 @@ export const WEAK_LAPSES = 2;
 export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
 export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
-export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '기타'];
+export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '판별', '기타'];
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -98,19 +98,27 @@ const nationOf = front => {
 };
 
 export function pickChoices(card, pool, rng = Math.random) {
-  const isPeriod = card.type === '시기';
-  const others = pool.filter(c => c.back !== card.back && (c.type === '시기') === isPeriod);
+  const cls = c => (c.type === '시기' || c.type === '판별' ? c.type : '');
+  const others = pool.filter(c => c.back !== card.back && cls(c) === cls(card)
+    && !(card.type === '판별' && c.front === card.front));
   const sameEra = others.filter(c => c.era === card.era);
-  const k2 = kind2(card.back), k1 = kind1(card.back);
-  const nat = isPeriod ? nationOf(card.front) : null;
-  const tiers = isPeriod ? [sameEra.filter(c => nationOf(c.front) === nat), sameEra] : [
-    sameEra.filter(c => kind2(c.back) === k2),
-    sameEra.filter(c => c.type === card.type && kind1(c.back) === k1),
-    others.filter(c => c.type === card.type && kind2(c.back) === k2),
-    sameEra.filter(c => c.type === card.type),
-    sameEra,
-    others,
-  ];
+  let tiers;
+  if (card.type === '시기') {
+    const nat = nationOf(card.front);
+    tiers = [sameEra.filter(c => nationOf(c.front) === nat), sameEra];
+  } else if (card.type === '판별') {
+    tiers = [sameEra.filter(c => c.group === card.group), sameEra];
+  } else {
+    const k2 = kind2(card.back), k1 = kind1(card.back);
+    tiers = [
+      sameEra.filter(c => kind2(c.back) === k2),
+      sameEra.filter(c => c.type === card.type && kind1(c.back) === k1),
+      others.filter(c => c.type === card.type && kind2(c.back) === k2),
+      sameEra.filter(c => c.type === card.type),
+      sameEra,
+      others,
+    ];
+  }
   const wrong = [...new Set(tiers.flatMap(t => shuffle(t.map(c => c.back), rng)))].slice(0, 3);
   return shuffle([card.back, ...wrong], rng);
 }
@@ -187,4 +195,42 @@ export function validateBackup(data) {
   return isObj(data) && isObj(data.progress)
     && (data.customCards === undefined || Array.isArray(data.customCards))
     && (data.stats === undefined || isStats(data.stats));
+}
+
+export const ORDER_GAP = 3;
+
+export function orderLabel(card) {
+  return card.type === '시기' ? card.front.replace(/\s*— 어느 [^?]*\?$/, '') : card.back;
+}
+
+function pickApart(pool, n, gap, rng, taken = []) {
+  const out = [];
+  for (const c of shuffle(pool, rng)) {
+    if ([...taken, ...out].every(o => Math.abs(o.year - c.year) >= gap && orderLabel(o) !== orderLabel(c))) out.push(c);
+    if (out.length === n) return out;
+  }
+  return null;
+}
+
+export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.random } = {}) {
+  const i = ERAS.indexOf(era);
+  const pool = cards.filter(c => Number.isInteger(c.year) && c.type !== '판별'
+    && (!era || Math.abs(ERAS.indexOf(c.era) - i) <= 1));
+  const k = kind ?? (rng() < 0.5 ? 'first' : 'between');
+  if (k === 'first') {
+    const options = pickApart(pool, 4, ORDER_GAP, rng);
+    if (!options) return null;
+    return { kind: k, prompt: '다음 중 가장 먼저 일어난 것은?', options, answer: options.reduce((a, b) => (b.year < a.year ? b : a)) };
+  }
+  for (let t = 0; t < 50; t++) {
+    const ends = pickApart(pool, 2, 2 * ORDER_GAP, rng);
+    if (!ends) return null;
+    const [a, b] = ends.sort((x, y) => x.year - y.year);
+    const inside = pool.filter(c => c.year >= a.year + ORDER_GAP && c.year <= b.year - ORDER_GAP);
+    const outside = pool.filter(c => c.year <= a.year - ORDER_GAP || c.year >= b.year + ORDER_GAP);
+    const answer = pickApart(inside, 1, 0, rng, [a, b])?.[0];
+    const wrong = answer && pickApart(outside, 3, 0, rng, [a, b, answer]);
+    if (wrong) return { kind: k, prompt: `(가) ${orderLabel(a)} 와(과) (나) ${orderLabel(b)} 사이에 있었던 일은?`, options: shuffle([answer, ...wrong], rng), answer, ends: [a, b] };
+  }
+  return null;
 }

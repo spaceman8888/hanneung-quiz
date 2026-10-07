@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, normalize, isShort, ERAS,
-  hashId, parseQuizlet, mergeCards, pickChoices,
+  hashId, parseQuizlet, mergeCards, pickChoices, orderLabel, makeOrderQuestion,
   entry, schedule, markKnown, relapse, reopen,
   buildBatch, practiceBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats } from '../logic.js';
@@ -321,4 +321,65 @@ test('pickChoices: 시기 distractors prefer kings of the same country (first co
     const ch = pickChoices(pool[3], pool);          // 신라 card: no 발해 king among the options
     assert.ok(!ch.some(b => ['무왕', '문왕', '선왕'].includes(b)), ch.join());
   }
+});
+
+const seeded = s => () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+const ev = (id, back, year, era = '고려', type = '사건') => ({ id, front: 'f' + id, back, era, type, year });
+const YEARS = [918, 936, 956, 993, 1010, 1019, 1107, 1126, 1135, 1170, 1198, 1231];
+const dated = YEARS.map((y, i) => ev('y' + i, '사건' + i, y));
+
+test('orderLabel: 시기 strips the question ending, others use back', () => {
+  assert.equal(orderLabel({ type: '시기', front: '노비안검법 실시 — 어느 왕 때?', back: '광종' }), '노비안검법 실시');
+  assert.equal(orderLabel({ type: '사건', front: 'x', back: '귀주 대첩' }), '귀주 대첩');
+});
+
+test('makeOrderQuestion first: 4 options ≥ gap apart, distinct labels, answer is earliest', () => {
+  for (let s = 1; s <= 40; s++) {
+    const q = makeOrderQuestion(dated, { kind: 'first', rng: seeded(s) });
+    assert.ok(q);
+    assert.equal(q.options.length, 4);
+    assert.equal(new Set(q.options.map(orderLabel)).size, 4);
+    for (const a of q.options) for (const b of q.options) if (a !== b) assert.ok(Math.abs(a.year - b.year) >= 3);
+    assert.equal(q.answer.year, Math.min(...q.options.map(o => o.year)));
+  }
+});
+
+test('makeOrderQuestion between: answer inside, wrong outside, ends not among options', () => {
+  let made = 0;
+  for (let s = 1; s <= 40; s++) {
+    const q = makeOrderQuestion(dated, { kind: 'between', rng: seeded(s) });
+    if (!q) continue;
+    made++;
+    const [a, b] = q.ends;
+    assert.equal(q.options.length, 4);
+    assert.ok(q.options.includes(q.answer));
+    assert.ok(q.answer.year >= a.year + 3 && q.answer.year <= b.year - 3);
+    for (const o of q.options) if (o !== q.answer) assert.ok(o.year <= a.year - 3 || o.year >= b.year + 3);
+    assert.ok(!q.options.includes(a) && !q.options.includes(b));
+  }
+  assert.ok(made > 0);
+});
+
+test('makeOrderQuestion: null when not enough dated cards; era filter uses adjacent eras only', () => {
+  assert.equal(makeOrderQuestion(dated.slice(0, 2), { kind: 'first' }), null);
+  assert.equal(makeOrderQuestion(dated.slice(0, 2), { kind: 'between' }), null);
+  const mixed = [...dated, ev('s1', '삼국사건', 500, '삼국'), ev('j1', '조선후기사건', 1750, '조선 후기')];
+  for (let s = 1; s <= 20; s++) {
+    const q = makeOrderQuestion(mixed, { era: '고려', kind: 'first', rng: seeded(s) });
+    assert.ok(q.options.every(o => o.era === '고려'));
+  }
+});
+
+test('pickChoices 판별: never another fact of the same subject; same group first; isolated from other types', () => {
+  const j = (id, front, back, group = '고려 왕') => ({ id, front, back, era: '고려', type: '판별', group });
+  const pool = [
+    j(1, '광종', '노비안검법 실시'), j(2, '광종', '과거제 시행'),
+    j(3, '성종', '12목 설치'), j(4, '현종', '5도 양계 정비'), j(5, '문종', '경정 전시과'),
+    j(6, '최승로', '시무 28조 건의', '고려 인물'), { id: 7, front: 'x', back: '귀주 대첩', era: '고려', type: '사건' },
+  ];
+  for (let i = 0; i < 30; i++) {
+    const ch = pickChoices(pool[0], pool);
+    assert.deepEqual([...ch].sort(), ['12목 설치', '5도 양계 정비', '경정 전시과', '노비안검법 실시'].sort());
+  }
+  assert.ok(!pickChoices(pool[6], pool).some(b => ['12목 설치', '과거제 시행'].includes(b)));
 });

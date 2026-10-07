@@ -13,7 +13,9 @@ test('every card is well-formed', () => {
     assert.ok(!ids.has(c.id), `duplicate id: ${where}`);
     ids.add(c.id);
     assert.ok(c.front?.trim(), `empty front: ${where}`);
-    assert.ok(c.back?.trim() && isShort(c.back), `back missing or over 10 chars: ${where}`);
+    assert.ok(c.back?.trim() && (c.type === '판별' ? c.back.length <= 40 : isShort(c.back)), `back missing or too long: ${where}`);
+    if (c.type === '판별') assert.ok(typeof c.group === 'string' && c.group, `판별 needs group: ${where}`);
+    if (c.year !== undefined) assert.ok(Number.isInteger(c.year) && c.year >= -3000 && c.year <= 2026, `bad year: ${where}`);
     assert.ok(ERAS.includes(c.era) && c.era !== '기타', `bad era: ${where}`);
     assert.ok(TYPES.includes(c.type), `bad type: ${where}`);
     const n = Number(c.id.slice(1));
@@ -23,7 +25,7 @@ test('every card is well-formed', () => {
 });
 
 test('fronts are unique', () => {
-  const fronts = cards.map(c => c.front.trim());
+  const fronts = cards.filter(c => c.type !== '판별').map(c => c.front.trim());
   const dups = fronts.filter((f, i) => fronts.indexOf(f) !== i);
   assert.deepEqual(dups, []);
 });
@@ -40,12 +42,22 @@ test('every era has at least the planned 90% of cards', () => {
 test('fronts are unique after normalization', () => {
   const seen = new Map();
   const dups = [];
-  for (const c of cards) {
+  for (const c of cards.filter(c => c.type !== '판별')) {
     const k = normalize(c.front);
     if (seen.has(k)) dups.push(`${seen.get(k)} = ${c.id}`);
     else seen.set(k, c.id);
   }
   assert.deepEqual(dups, []);
+});
+
+test('판별 cards: (front, back) unique and back not in front', () => {
+  const seen = new Set();
+  for (const c of cards.filter(c => c.type === '판별')) {
+    const k = c.front + '|' + c.back;
+    assert.ok(!seen.has(k), `dup 판별: ${c.id}`);
+    seen.add(k);
+    assert.ok(!c.front.includes(c.back), `back in front: ${c.id}`);
+  }
 });
 
 test('original 584 cards keep their position', () => {

@@ -35,10 +35,12 @@ let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검', period: '시기 맞히기' };
-const SCHEDULED = new Set(['normal', 'period']);
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제' };
+const MODE_TYPE = { period: '시기', judge: '판별' };
+const SCHEDULED = new Set(['normal', 'period', 'judge']);
 const EMPTY_MSG = {
   period: '시기 문제를 모두 완료했어요!',
+  judge: '보기 판별 문제를 모두 완료했어요!',
   normal: '모든 카드를 완료했어요! 완료 카드 점검으로 확인해 보세요.',
   weak: '자주 틀린 카드가 없어요.',
   check: '완료 카드가 없어요.',
@@ -62,6 +64,8 @@ function renderHome() {
   const n = L.counts(allCards().filter(c => !era || c.era === era), progress, stats.tick);
   const pn = L.counts(allCards().filter(c => c.type === '시기' && (!era || c.era === era)), progress, stats.tick);
   $('periodBtn').textContent = `시기 맞히기 (${pn.fresh + pn.learning})`;
+  const jn = L.counts(allCards().filter(c => c.type === '판별' && (!era || c.era === era)), progress, stats.tick);
+  $('judgeBtn').textContent = `보기 판별 (${jn.fresh + jn.learning})`;
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
@@ -92,9 +96,10 @@ function enterMode(m) {
 
 function startBatch() {
   cancelTimer();
+  if (mode === 'order') return renderOrder();
   const era = $('eraSelect').value || null;
   const batch = SCHEDULED.has(mode)
-    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era, type: mode === 'period' ? '시기' : null })
+    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era, type: MODE_TYPE[mode] ?? null })
     : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
   if (!batch.length) {
     $('homeMsg').textContent = !SCHEDULED.has(mode) && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
@@ -116,9 +121,10 @@ function renderQuestion() {
   if (!item) return startBatch();
   const { card } = item;
   $('qTag').textContent = `${card.era} · ${card.type}`;
-  $('qFront').textContent = card.front;
+  $('qFront').textContent = card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
   $('flag').hidden = false;
   $('known').hidden = mode === 'check';
+  $('dunno').hidden = false;
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
   $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
     const b = btn(choice, () => onAnswer(choice === card.back, b));
@@ -153,13 +159,51 @@ function bumpStats() {
   save('stats', stats);
 }
 
+let orderQ = null;
+const fmtYear = y => (y < 0 ? `기원전 ${-y}년` : `${y}년`);
+
+function renderOrder() {
+  busy = false;
+  $('feedback').replaceChildren();
+  const era = $('eraSelect').value || null;
+  orderQ = L.makeOrderQuestion(allCards(), { era }) ?? L.makeOrderQuestion(allCards(), { era, kind: 'first' });
+  if (!orderQ) { $('homeMsg').textContent = '연도 정보가 있는 카드가 부족해요.'; return goHome(); }
+  show('study');
+  $('progressText').textContent = `${MODE_LABEL.order}${era ? ' · ' + era : ''} · ${doneCount}문제 풀이`;
+  $('qTag').textContent = orderQ.kind === 'first' ? '순서' : '시기 사이';
+  $('qFront').textContent = orderQ.prompt;
+  $('known').hidden = true;
+  $('flag').hidden = true;
+  $('dunno').hidden = false;
+  $('choices').replaceChildren(...orderQ.options.map(c => {
+    const b = btn(L.orderLabel(c), () => onOrderAnswer(c, b));
+    return b;
+  }));
+}
+
+function onOrderAnswer(choice, button) {
+  if (busy || !orderQ) return;
+  busy = true;
+  const ok = choice === orderQ.answer;
+  button?.classList.add(ok ? 'ok' : 'bad');
+  [...$('choices').children].forEach((b, i) => {
+    const c = orderQ.options[i];
+    b.textContent = `${L.orderLabel(c)} (${fmtYear(c.year)})`;
+    if (c === orderQ.answer) b.classList.add('ok');
+  });
+  const p = document.createElement('p');
+  p.className = ok ? 'ok' : 'bad';
+  p.textContent = (ok ? '정답!' : '오답') + (orderQ.ends ? ` — (가) ${fmtYear(orderQ.ends[0].year)} · (나) ${fmtYear(orderQ.ends[1].year)}` : '');
+  $('feedback').replaceChildren(p, btn('다음', () => { doneCount++; renderOrder(); }, 'primary'));
+}
+
 function commit(correct) {
   if (!busy) return;
   L.submit(session, correct);
   renderQuestion();
 }
 
-$('dunno').onclick = () => onAnswer(false);
+$('dunno').onclick = () => (mode === 'order' ? onOrderAnswer(null) : onAnswer(false));
 
 $('known').onclick = () => {
   if (busy || !session.queue[0]) return;
@@ -247,6 +291,8 @@ fillEras($('importEra'), false);
 $('importEra').value = '기타';
 $('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); };
 $('periodBtn').onclick = () => enterMode('period');
+$('judgeBtn').onclick = () => enterMode('judge');
+$('orderBtn').onclick = () => enterMode('order');
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
 $('checkBtn').onclick = () => enterMode('check');

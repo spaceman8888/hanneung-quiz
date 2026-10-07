@@ -10,7 +10,7 @@ const odd = [], leak = [];
 for (const c of cards) {
   const f = normalize(c.front);
   const hit = b => chunks(b).some(x => f.includes(x));
-  const sameKindExists = c.type !== "시기" && cards.some(d => d.back !== c.back && kind(d.back) === kind(c.back));
+  const sameKindExists = c.type !== "시기" && c.type !== "판별" && cards.some(d => d.back !== c.back && kind(d.back) === kind(c.back));
   let o = 0, l = 0;
   for (let t = 0; t < RUNS; t++) {
     const wrong = pickChoices(c, cards).filter(x => x !== c.back);
