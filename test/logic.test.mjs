@@ -383,3 +383,29 @@ test('pickChoices 판별: never another fact of the same subject; same group fir
   }
   assert.ok(!pickChoices(pool[6], pool).some(b => ['12목 설치', '과거제 시행'].includes(b)));
 });
+
+test('makeOrderQuestion without era filter: all options (and ends) come from one era', () => {
+  const two = [
+    ...Array.from({ length: 30 }, (_, i) => ev('g' + i, '고려사건' + i, 918 + i * 10, '고려')),
+    ...Array.from({ length: 30 }, (_, i) => ev('h' + i, '후기사건' + i, 1600 + i * 10, '조선 후기')),
+  ];
+  for (let s = 1; s <= 30; s++) for (const kind of ['first', 'between']) {
+    const q = makeOrderQuestion(two, { kind, rng: seeded(s) });
+    assert.ok(q);
+    const all = [...q.options, ...(q.ends ?? [])];
+    assert.equal(new Set(all.map(c => c.era)).size, 1, `seed ${s} ${kind}`);
+  }
+});
+
+test('pickChoices 판별: no distractor whose back mentions the asked subject', () => {
+  const j = (id, front, back) => ({ id, front, back, era: '고려', type: '판별', group: '고려 왕' });
+  const pool = [j(1, '광종', '노비안검법 실시'), j(2, '성종', '광종 때 과거제를 시행한 인물과 달리 12목 설치'),
+    j(3, '현종', '거란 침입 때 나주 피난'), j(4, '목종', '강조의 정변으로 폐위'), j(5, '경종', '전시과 처음 제정')];
+  for (let s = 1; s <= 20; s++) assert.ok(!pickChoices(pool[0], pool, seeded(s)).includes(pool[1].back));
+});
+
+test('makeOrderQuestion between prompt has a space before 와(과) only once, none before it', () => {
+  const q = makeOrderQuestion(dated, { kind: 'between', rng: seeded(3) });
+  assert.match(q.prompt, /^\(가\) .+와\(과\) \(나\) .+ 사이에 있었던 일은\?$/);
+  assert.ok(!q.prompt.includes(' 와(과)'));
+});

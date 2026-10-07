@@ -100,7 +100,7 @@ const nationOf = front => {
 export function pickChoices(card, pool, rng = Math.random) {
   const cls = c => (c.type === '시기' || c.type === '판별' ? c.type : '');
   const others = pool.filter(c => c.back !== card.back && cls(c) === cls(card)
-    && !(card.type === '판별' && c.front === card.front));
+    && !(card.type === '판별' && (c.front === card.front || c.back.includes(card.front))));
   const sameEra = others.filter(c => c.era === card.era);
   let tiers;
   if (card.type === '시기') {
@@ -214,8 +214,15 @@ function pickApart(pool, n, gap, rng, taken = []) {
 
 export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.random } = {}) {
   const i = ERAS.indexOf(era);
-  const pool = cards.filter(c => Number.isInteger(c.year) && c.type !== '판별'
-    && (!era || Math.abs(ERAS.indexOf(c.era) - i) <= 1));
+  const dated = cards.filter(c => Number.isInteger(c.year) && c.type !== '판별');
+  let pool = dated;
+  if (era) {
+    const same = dated.filter(c => c.era === era);
+    pool = same.length >= 8 ? same : dated.filter(c => Math.abs(ERAS.indexOf(c.era) - i) <= 1);
+  } else {
+    const big = ERAS.filter(e => dated.filter(c => c.era === e).length >= 30);
+    if (big.length) { const e = big[Math.floor(rng() * big.length)]; pool = dated.filter(c => c.era === e); }
+  }
   const k = kind ?? (rng() < 0.5 ? 'first' : 'between');
   if (k === 'first') {
     const options = pickApart(pool, 4, ORDER_GAP, rng);
@@ -230,7 +237,7 @@ export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.r
     const outside = pool.filter(c => c.year <= a.year - ORDER_GAP || c.year >= b.year + ORDER_GAP);
     const answer = pickApart(inside, 1, 0, rng, [a, b])?.[0];
     const wrong = answer && pickApart(outside, 3, 0, rng, [a, b, answer]);
-    if (wrong) return { kind: k, prompt: `(가) ${orderLabel(a)} 와(과) (나) ${orderLabel(b)} 사이에 있었던 일은?`, options: shuffle([answer, ...wrong], rng), answer, ends: [a, b] };
+    if (wrong) return { kind: k, prompt: `(가) ${orderLabel(a)}와(과) (나) ${orderLabel(b)} 사이에 있었던 일은?`, options: shuffle([answer, ...wrong], rng), answer, ends: [a, b] };
   }
   return null;
 }
