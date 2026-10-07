@@ -102,6 +102,7 @@ function startBatch() {
   }
   batch.forEach(c => practiced.add(c.id));
   session = L.createSession(batch);
+  session.saved = new Set();
   show('study');
   renderQuestion();
 }
@@ -126,9 +127,17 @@ function renderQuestion() {
 }
 
 function onAnswer(correct, button) {
-  if (busy) return;
+  if (busy || !session?.queue[0]) return;
   busy = true;
   const { card } = session.queue[0];
+  const id = card.id;
+  if (!session.saved.has(id)) {
+    if (SCHEDULED.has(mode)) progress[id] = L.schedule(progress[id], { wrong: !correct }, stats.tick);
+    else if (!correct) progress[id] = L.relapse(progress[id], stats.tick);
+    session.saved.add(id);
+    save('progress', progress);
+  }
+  if (correct) { bumpStats(); doneCount++; }
   button?.classList.add(correct ? 'ok' : 'bad');
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
@@ -145,16 +154,7 @@ function bumpStats() {
 
 function commit(correct) {
   if (!busy) return;
-  const id = session.queue[0].card.id;
-  const done = L.submit(session, correct);
-  if (done) {
-    const wrong = session.wrong.has(id);
-    if (SCHEDULED.has(mode)) progress[id] = L.schedule(progress[id], { wrong }, stats.tick);
-    else if (wrong) progress[id] = L.relapse(progress[id], stats.tick);
-    save('progress', progress);
-    bumpStats();
-    doneCount++;
-  }
+  L.submit(session, correct);
   renderQuestion();
 }
 
