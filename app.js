@@ -139,6 +139,7 @@ function onAnswer(correct, button) {
   }
   if (correct) { bumpStats(); doneCount++; }
   button?.classList.add(correct ? 'ok' : 'bad');
+  if (!correct) [...$('choices').children].find(b => b.textContent === card.back)?.classList.add('ok');
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
@@ -157,6 +158,8 @@ function commit(correct) {
   L.submit(session, correct);
   renderQuestion();
 }
+
+$('dunno').onclick = () => onAnswer(false);
 
 $('known').onclick = () => {
   if (busy || !session.queue[0]) return;
