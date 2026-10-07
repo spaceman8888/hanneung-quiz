@@ -1,19 +1,16 @@
-export const INTERVALS = [1, 3, 7, 14, 30];
+export const GAPS = [20, 50, 120, 300, 700];
+export const RELEARN_GAP = 10;
+export const FAST_DONE_STREAK = 3;
+export const WEAK_LAPSES = 2;
 export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
-export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '기타'];
+export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
 export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '기타'];
 
 const pad = n => String(n).padStart(2, '0');
 
 export function today(d = new Date()) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-export function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return today(d);
 }
 
 export function normalize(s) {
@@ -29,11 +26,35 @@ export function isShort(answer) {
   return answer.length <= SHORT_MAX;
 }
 
-export function schedule(prev, { wrong }, todayStr) {
-  const flagged = prev?.flagged ?? false;
-  if (wrong || !prev?.seen) return { stage: 0, due: addDays(todayStr, INTERVALS[0]), seen: true, flagged };
-  const stage = Math.min(prev.stage + 1, INTERVALS.length - 1);
-  return { stage, due: addDays(todayStr, INTERVALS[stage]), seen: true, flagged };
+const BLANK = { stage: 0, next: 0, seen: false, flagged: false, lapses: 0, streak: 0, done: false };
+
+export function entry(prev) {
+  const { due, ...rest } = prev ?? {};
+  return { ...BLANK, ...rest };
+}
+
+export function relapse(prev, tick) {
+  const p = entry(prev);
+  return { ...p, seen: true, done: false, stage: 0, streak: 0, lapses: p.lapses + 1, next: tick + RELEARN_GAP };
+}
+
+export function schedule(prev, { wrong }, tick) {
+  const p = entry(prev);
+  if (!p.seen) return { ...p, seen: true, stage: 0, streak: 0, next: tick + (wrong ? RELEARN_GAP : GAPS[0]) };
+  if (wrong) return relapse(p, tick);
+  const streak = p.streak + 1;
+  const done = (p.lapses === 0 && streak >= FAST_DONE_STREAK) || p.stage === GAPS.length - 1;
+  const stage = Math.min(p.stage + 1, GAPS.length - 1);
+  const gap = p.lapses >= WEAK_LAPSES ? Math.ceil(GAPS[stage] / 2) : GAPS[stage];
+  return { ...p, stage, streak, done, next: tick + gap };
+}
+
+export function markKnown(prev) {
+  return { ...entry(prev), seen: true, done: true };
+}
+
+export function reopen(prev, tick) {
+  return { ...entry(prev), done: false, streak: 0, next: tick };
 }
 
 export function hashId(front, back) {
@@ -79,19 +100,39 @@ export function pickChoices(card, pool, rng = Math.random) {
   return shuffle([card.back, ...wrong], rng);
 }
 
-export function newLeft(limit, newToday, todayStr) {
-  return Math.max(0, limit - (newToday.date === todayStr ? newToday.count : 0));
+export function buildBatch(cards, progress, { tick, era = null, size = BATCH_SIZE }) {
+  const p = id => entry(progress[id]);
+  const pool = cards.filter(c => (!era || c.era === era) && !p(c.id).done);
+  const seen = pool.filter(c => p(c.id).seen);
+  const due = seen.filter(c => p(c.id).next <= tick)
+    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || p(a.id).next - p(b.id).next);
+  const fresh = pool.filter(c => !p(c.id).seen);
+  const ahead = seen.filter(c => p(c.id).next > tick).sort((a, b) => p(a.id).next - p(b.id).next);
+  return [...due, ...fresh, ...ahead].slice(0, size);
 }
 
-export function buildBatch(cards, progress, { todayStr, newLeft, era = null, size = BATCH_SIZE }) {
-  const inEra = cards.filter(c => !era || c.era === era);
-  const due = inEra
-    .filter(c => progress[c.id]?.seen && progress[c.id].due <= todayStr)
-    .sort((a, b) => progress[a.id].due.localeCompare(progress[b.id].due));
-  const reviews = due.slice(0, size);
-  const fresh = inEra.filter(c => !progress[c.id]?.seen)
-    .slice(0, Math.max(0, Math.min(size - reviews.length, newLeft)));
-  return [...reviews, ...fresh];
+export function practiceBatch(cards, progress, { mode, skip = new Set(), era = null, size = BATCH_SIZE, rng = Math.random }) {
+  const p = id => entry(progress[id]);
+  const pool = cards.filter(c => (!era || c.era === era) && !skip.has(c.id));
+  if (mode === 'check') return shuffle(pool.filter(c => p(c.id).done), rng).slice(0, size);
+  return pool.filter(c => !p(c.id).done && p(c.id).lapses > 0)
+    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || p(a.id).next - p(b.id).next)
+    .slice(0, size);
+}
+
+export function counts(cards, progress, tick) {
+  const r = { due: 0, fresh: 0, learning: 0, done: 0, weak: 0 };
+  for (const c of cards) {
+    const p = entry(progress[c.id]);
+    if (p.done) r.done++;
+    else if (!p.seen) r.fresh++;
+    else {
+      r.learning++;
+      if (p.next <= tick) r.due++;
+      if (p.lapses > 0) r.weak++;
+    }
+  }
+  return r;
 }
 
 export function createSession(batch, progress) {
@@ -125,9 +166,14 @@ export function loadJSON(storage, key, fallback) {
 }
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isCount = v => Number.isInteger(v) && v >= 0;
+
+export function isStats(v) {
+  return isObj(v) && isCount(v.tick) && typeof v.date === 'string' && isCount(v.count);
+}
 
 export function validateBackup(data) {
   return isObj(data) && isObj(data.progress)
     && (data.customCards === undefined || Array.isArray(data.customCards))
-    && (data.settings === undefined || (isObj(data.settings) && Number.isInteger(data.settings.newLimit) && data.settings.newLimit >= 1 && data.settings.newLimit <= 200));
+    && (data.stats === undefined || isStats(data.stats));
 }
