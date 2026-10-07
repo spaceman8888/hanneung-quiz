@@ -26,7 +26,7 @@
   #feedback p { font-size:19px; font-weight:600; }
   #feedback button { margin:4px 8px 4px 0; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
-  table { width:100%; border-collapse:collapse; font-size:15px; } td { padding:6px 0; border-bottom:1px solid var(--line); } td + td { text-align:right; }
+  .eraRow { display:flex; justify-content:space-between; width:100%; margin:6px 0; text-align:left; }
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   textarea { height:140px; }
   .row { display:flex; gap:8px; margin:8px 0; } .row > * { flex:1; }
@@ -52,8 +52,8 @@
     <div class="row"><button id="periodBtn">시기 맞히기</button></div>
     <div class="row"><button id="weakBtn">자주 틀린 카드</button><button id="checkBtn">완료 카드 점검</button></div>
     <p id="homeMsg" class="muted"></p>
-    <p class="muted">시대별: 완료 / 학습 중 / 전체</p>
-    <table id="eraTable"></table>
+    <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습</p>
+    <div id="eraTable"></div>
   </section>
 
   <section id="study" hidden>

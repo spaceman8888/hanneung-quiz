@@ -32,7 +32,7 @@ let custom = load('customCards', []);
 let progress = load('progress', {});
 let stats = load('stats', { tick: 0, date: '', count: 0 });
 let session = null, mode = 'normal', practiced = new Set();
-let doneCount = 0, batchSize = 0, busy = false, timer = null;
+let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
 const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검', period: '시기 맞히기' };
@@ -72,12 +72,12 @@ function renderHome() {
     const inEra = allCards().filter(c => c.era === e);
     if (!inEra.length) return null;
     const k = L.counts(inEra, progress, stats.tick);
-    const tr = document.createElement('tr');
-    const name = document.createElement('td'), count = document.createElement('td');
+    const b = btn('', () => { $('eraSelect').value = e; enterMode('normal'); }, 'eraRow');
+    const name = document.createElement('span'), count = document.createElement('span');
     name.textContent = e;
     count.textContent = `${k.done} / ${k.learning} / ${inEra.length}`;
-    tr.append(name, count);
-    return tr;
+    b.append(name, count);
+    return b;
   }).filter(Boolean));
   show('home');
 }
@@ -86,6 +86,7 @@ function enterMode(m) {
   mode = m;
   practiced = new Set();
   $('homeMsg').textContent = '';
+  doneCount = 0;
   startBatch();
 }
 
@@ -97,12 +98,10 @@ function startBatch() {
     : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
   if (!batch.length) {
     $('homeMsg').textContent = !SCHEDULED.has(mode) && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
-    return renderHome();
+    return goHome();
   }
   batch.forEach(c => practiced.add(c.id));
   session = L.createSession(batch);
-  doneCount = 0;
-  batchSize = batch.length;
   show('study');
   renderQuestion();
 }
@@ -110,9 +109,10 @@ function startBatch() {
 function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
-  $('progressText').textContent = `${MODE_LABEL[mode]} · ${doneCount} / ${batchSize}`;
+  const era = $('eraSelect').value;
+  $('progressText').textContent = `${MODE_LABEL[mode]}${era ? ' · ' + era : ''} · ${doneCount}장 풀이`;
   const item = session.queue[0];
-  if (!item) return renderBatchDone();
+  if (!item) return startBatch();
   const { card } = item;
   $('qTag').textContent = `${card.era} · ${card.type}`;
   $('qFront').textContent = card.front;
@@ -123,14 +123,6 @@ function renderQuestion() {
     const b = btn(choice, () => onAnswer(choice === card.back, b));
     return b;
   }));
-}
-
-function renderBatchDone() {
-  $('qTag').textContent = '';
-  $('qFront').textContent = `묶음 완료! (${batchSize}장)`;
-  $('flag').hidden = true;
-  $('known').hidden = true;
-  $('choices').replaceChildren(btn('다음 묶음', startBatch, 'primary'), btn('홈으로', goHome));
 }
 
 function onAnswer(correct, button) {
