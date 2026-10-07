@@ -271,3 +271,35 @@ test('ERAS has 통시대 before 기타', () => {
   assert.deepEqual(ERAS.slice(-3), ['현대', '통시대', '기타']);
 });
 
+
+test('pickChoices: same kind first (sites with sites)', () => {
+  const s = (id, back) => ({ id, front: 'f' + id, back, era: '선사', type: '문화재' });
+  const pool = [s(1, '송국리 유적'), s(2, '붉은 간토기'), s(3, '세형 동검'), s(4, '거친무늬 거울'),
+    s(5, '암사동 유적'), s(6, '흔암리 유적'), s(7, '전곡리 유적')];
+  for (let i = 0; i < 20; i++) {
+    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['송국리 유적', '암사동 유적', '전곡리 유적', '흔암리 유적']);
+  }
+});
+
+test('pickChoices: kings with kings (same last character)', () => {
+  const k = (id, back) => ({ id, front: 'f' + id, back, era: '통일신라·발해', type: '인물' });
+  const pool = [k(1, '신문왕'), k(2, '김대성'), k(3, '성덕왕'), k(4, '최치원'), k(5, '경덕왕'), k(6, '장보고'), k(7, '원성왕')];
+  for (let i = 0; i < 20; i++) {
+    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['경덕왕', '성덕왕', '신문왕', '원성왕']);
+  }
+});
+
+test('pickChoices: 시기 cards use only same-era 시기 answers (fewer if needed); others never get 시기 answers', () => {
+  const p = (id, back, era = '일제강점기') => ({ id, front: 'f' + id, back, era, type: '시기' });
+  const other = { id: 9, front: 'x', back: '신간회', era: '일제강점기', type: '단체' };
+  const pool = [p(1, '무단 통치기'), p(2, '문화 통치기'), p(3, '민족 말살 통치기'), p(4, '문화 통치기'), other, p(5, '박정희 정부', '현대')];
+  for (let i = 0; i < 20; i++) {
+    assert.deepEqual([...pickChoices(pool[0], pool)].sort(), ['무단 통치기', '문화 통치기', '민족 말살 통치기']);
+  }
+  assert.deepEqual(pickChoices(other, pool), ['신간회']);
+});
+
+test('buildBatch: type filter', () => {
+  const cs = [mk('a', 'x'), { ...mk('b', '세종'), type: '시기' }];
+  assert.deepEqual(buildBatch(cs, {}, { tick: 0, type: '시기' }).map(c => c.id), ['b']);
+});

@@ -5,7 +5,7 @@ export const WEAK_LAPSES = 2;
 export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
 export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
-export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '기타'];
+export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '기타'];
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -87,17 +87,29 @@ export function shuffle(arr, rng = Math.random) {
   return a;
 }
 
+const kind2 = s => normalize(s).slice(-2);
+const kind1 = s => normalize(s).slice(-1);
+
 export function pickChoices(card, pool, rng = Math.random) {
-  const others = pool.filter(c => c.back !== card.back);
+  const isPeriod = card.type === '시기';
+  const others = pool.filter(c => c.back !== card.back && (c.type === '시기') === isPeriod);
   const sameEra = others.filter(c => c.era === card.era);
-  const tiers = [sameEra.filter(c => c.type === card.type), sameEra, others];
+  const k2 = kind2(card.back), k1 = kind1(card.back);
+  const tiers = isPeriod ? [sameEra] : [
+    sameEra.filter(c => kind2(c.back) === k2),
+    sameEra.filter(c => c.type === card.type && kind1(c.back) === k1),
+    others.filter(c => c.type === card.type && kind2(c.back) === k2),
+    sameEra.filter(c => c.type === card.type),
+    sameEra,
+    others,
+  ];
   const wrong = [...new Set(tiers.flatMap(t => shuffle(t.map(c => c.back), rng)))].slice(0, 3);
   return shuffle([card.back, ...wrong], rng);
 }
 
-export function buildBatch(cards, progress, { tick, era = null, size = BATCH_SIZE }) {
+export function buildBatch(cards, progress, { tick, era = null, type = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  const pool = cards.filter(c => (!era || c.era === era) && !p(c.id).done);
+  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type) && !p(c.id).done);
   const seen = pool.filter(c => p(c.id).seen);
   const due = seen.filter(c => p(c.id).next <= tick)
     .sort((a, b) => p(b.id).lapses - p(a.id).lapses || p(a.id).next - p(b.id).next);
