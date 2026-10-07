@@ -5,12 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = {
-  progress: isObj,
-  customCards: Array.isArray,
-  settings: v => isObj(v) && Number.isInteger(v.newLimit) && v.newLimit >= 1 && v.newLimit <= 200,
-  newToday: v => isObj(v) && typeof v.date === 'string' && Number.isFinite(v.count),
-};
+const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -35,13 +30,21 @@ function btn(label, onclick, cls) {
 let baseCards = [];
 let custom = load('customCards', []);
 let progress = load('progress', {});
-let settings = load('settings', { newLimit: 20 });
-let newToday = load('newToday', { date: '', count: 0 });
-let session = null, doneCount = 0, batchSize = 0, busy = false, timer = null;
+let stats = load('stats', { tick: 0, date: '', count: 0 });
+let session = null, mode = 'normal', practiced = new Set();
+let doneCount = 0, batchSize = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
+
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검' };
+const EMPTY_MSG = {
+  normal: '모든 카드를 완료했어요! 완료 카드 점검으로 확인해 보세요.',
+  weak: '자주 틀린 카드가 없어요.',
+  check: '완료 카드가 없어요.',
+};
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => ['home', 'study', 'manage'].forEach(s => { $(s).hidden = s !== id; });
+const todayCount = () => (stats.date === L.today() ? stats.count : 0);
 
 function fillEras(sel, withAll) {
   sel.replaceChildren(...(withAll ? [new Option('전체 시대', '')] : []), ...L.ERAS.map(e => new Option(e, e)));
@@ -49,34 +52,46 @@ function fillEras(sel, withAll) {
 
 function renderHome() {
   cancelTimer();
-  const t = L.today(), era = $('eraSelect').value;
-  const cards = allCards().filter(c => !era || c.era === era);
-  $('dueCount').textContent = cards.filter(c => progress[c.id]?.seen && progress[c.id].due <= t).length;
-  $('newCount').textContent = Math.min(cards.filter(c => !progress[c.id]?.seen).length,
-    L.newLeft(settings.newLimit, newToday, t));
+  const era = $('eraSelect').value;
+  const n = L.counts(allCards().filter(c => !era || c.era === era), progress, stats.tick);
+  $('dueCount').textContent = n.due;
+  $('newCount').textContent = n.fresh;
+  $('doneCount').textContent = n.done;
+  $('todayCount').textContent = todayCount();
+  $('weakBtn').textContent = `자주 틀린 카드 (${n.weak})`;
+  $('checkBtn').textContent = `완료 카드 점검 (${n.done})`;
   $('eraTable').replaceChildren(...L.ERAS.map(e => {
     const inEra = allCards().filter(c => c.era === e);
     if (!inEra.length) return null;
+    const k = L.counts(inEra, progress, stats.tick);
     const tr = document.createElement('tr');
     const name = document.createElement('td'), count = document.createElement('td');
     name.textContent = e;
-    count.textContent = `${inEra.filter(c => progress[c.id]?.seen).length} / ${inEra.length}`;
+    count.textContent = `${k.done} / ${k.learning} / ${inEra.length}`;
     tr.append(name, count);
     return tr;
   }).filter(Boolean));
   show('home');
 }
 
+function enterMode(m) {
+  mode = m;
+  practiced = new Set();
+  $('homeMsg').textContent = '';
+  startBatch();
+}
+
 function startBatch() {
   cancelTimer();
-  const t = L.today();
-  const batch = L.buildBatch(allCards(), progress,
-    { todayStr: t, newLeft: L.newLeft(settings.newLimit, newToday, t), era: $('eraSelect').value || null });
+  const era = $('eraSelect').value || null;
+  const batch = mode === 'normal'
+    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era })
+    : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
   if (!batch.length) {
-    $('homeMsg').textContent = '오늘 학습할 카드를 모두 끝냈어요!';
+    $('homeMsg').textContent = practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return renderHome();
   }
-  $('homeMsg').textContent = '';
+  batch.forEach(c => practiced.add(c.id));
   session = L.createSession(batch, progress);
   doneCount = 0;
   batchSize = batch.length;
@@ -89,15 +104,16 @@ function renderQuestion() {
   $('feedback').replaceChildren();
   $('choices').replaceChildren();
   $('saForm').hidden = true;
-  $('progressText').textContent = `${doneCount} / ${batchSize}`;
+  $('progressText').textContent = `${MODE_LABEL[mode]} · ${doneCount} / ${batchSize}`;
   const item = session.queue[0];
   if (!item) return renderBatchDone();
-  const { card, mode } = item;
-  $('qTag').textContent = `${card.era} · ${card.type} · ${mode === 'mc' ? '객관식' : '주관식'}`;
+  const { card, mode: qmode } = item;
+  $('qTag').textContent = `${card.era} · ${card.type} · ${qmode === 'mc' ? '객관식' : '주관식'}`;
   $('qFront').textContent = card.front;
   $('flag').hidden = false;
+  $('known').hidden = mode === 'check';
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
-  if (mode === 'mc') {
+  if (qmode === 'mc') {
     $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
       const b = btn(choice, () => onAnswer(choice === card.back, b));
       return b;
@@ -113,36 +129,39 @@ function renderBatchDone() {
   $('qTag').textContent = '';
   $('qFront').textContent = `묶음 완료! (${batchSize}장)`;
   $('flag').hidden = true;
+  $('known').hidden = true;
   $('choices').replaceChildren(btn('다음 묶음', startBatch, 'primary'), btn('홈으로', renderHome));
 }
 
 function onAnswer(correct, button) {
   if (busy) return;
   busy = true;
-  const { card, mode } = session.queue[0];
+  const { card, mode: qmode } = session.queue[0];
   button?.classList.add(correct ? 'ok' : 'bad');
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
   if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
-  if (mode === 'sa') $('feedback').append(btn('맞은 걸로 처리', () => commit(true)));
+  if (qmode === 'sa') $('feedback').append(btn('맞은 걸로 처리', () => commit(true)));
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
+}
+
+function bumpStats() {
+  stats = { tick: stats.tick + 1, date: L.today(), count: todayCount() + 1 };
+  save('stats', stats);
 }
 
 function commit(correct) {
   if (!busy) return;
   const id = session.queue[0].card.id;
-  const wasSeen = progress[id]?.seen;
   const done = L.submit(session, correct);
   if (done) {
-    const t = L.today();
-    progress[id] = L.schedule(progress[id], { wrong: session.wrong.has(id) }, t);
+    const wrong = session.wrong.has(id);
+    if (mode === 'normal') progress[id] = L.schedule(progress[id], { wrong }, stats.tick);
+    else if (wrong) progress[id] = L.relapse(progress[id], stats.tick);
     save('progress', progress);
-    if (!wasSeen) {
-      newToday = { date: t, count: (newToday.date === t ? newToday.count : 0) + 1 };
-      save('newToday', newToday);
-    }
+    bumpStats();
     doneCount++;
   }
   renderQuestion();
@@ -156,6 +175,15 @@ $('saForm').onsubmit = e => {
   onAnswer(L.isCorrect(v, session.queue[0].card.back));
 };
 
+$('known').onclick = () => {
+  if (busy || !session.queue[0]) return;
+  const { card } = session.queue.shift();
+  progress[card.id] = L.markKnown(progress[card.id]);
+  save('progress', progress);
+  doneCount++;
+  renderQuestion();
+};
+
 $('flag').onclick = () => {
   const id = session.queue[0].card.id;
   progress[id] = { ...progress[id], flagged: !progress[id]?.flagged };
@@ -163,16 +191,22 @@ $('flag').onclick = () => {
   $('flag').textContent = progress[id].flagged ? '신고 취소' : '신고';
 };
 
-function renderManage() {
-  $('newLimit').value = settings.newLimit;
-  const flagged = allCards().filter(c => progress[c.id]?.flagged);
-  $('flagList').replaceChildren(...flagged.map(c => {
+function cardList(cards, label, onclick) {
+  return cards.map(c => {
     const li = document.createElement('li');
     li.textContent = `${c.front} → ${c.back} `;
-    li.append(btn('해제', () => { progress[c.id].flagged = false; save('progress', progress); renderManage(); }));
+    li.append(btn(label, () => { onclick(c); save('progress', progress); renderManage(); }));
     return li;
-  }));
+  });
+}
+
+function renderManage() {
+  const flagged = allCards().filter(c => progress[c.id]?.flagged);
+  $('flagList').replaceChildren(...cardList(flagged, '해제', c => { progress[c.id].flagged = false; }));
   if (!flagged.length) $('flagList').textContent = '없음';
+  const done = allCards().filter(c => L.entry(progress[c.id]).done);
+  $('doneSummary').textContent = `완료 카드 (${done.length})`;
+  $('doneList').replaceChildren(...cardList(done, '완료 취소', c => { progress[c.id] = L.reopen(progress[c.id], stats.tick); }));
   show('manage');
 }
 
@@ -191,14 +225,8 @@ $('clearCustomBtn').onclick = () => {
   $('importMsg').textContent = '가져온 카드를 모두 삭제했습니다';
 };
 
-$('newLimit').onchange = () => {
-  const n = parseInt($('newLimit').value, 10);
-  if (n >= 1 && n <= 200) { settings = { ...settings, newLimit: n }; save('settings', settings); }
-  else $('newLimit').value = settings.newLimit;
-};
-
 $('exportBtn').onclick = () => {
-  const data = { version: 1, progress, customCards: custom, settings, newToday };
+  const data = { version: 2, progress, customCards: custom, stats };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `hanneung-backup-${L.today()}.json`;
@@ -219,9 +247,8 @@ $('backupFile').onchange = async e => {
   }
   progress = data.progress;
   custom = data.customCards ?? custom;
-  settings = data.settings ?? settings;
-  newToday = data.newToday ?? newToday;
-  save('progress', progress); save('customCards', custom); save('settings', settings); save('newToday', newToday);
+  stats = data.stats ?? stats;
+  save('progress', progress); save('customCards', custom); save('stats', stats);
   $('backupMsg').textContent = '불러오기 완료';
 };
 
@@ -229,7 +256,9 @@ fillEras($('eraSelect'), true);
 fillEras($('importEra'), false);
 $('importEra').value = '기타';
 $('eraSelect').onchange = renderHome;
-$('start').onclick = startBatch;
+$('start').onclick = () => enterMode('normal');
+$('weakBtn').onclick = () => enterMode('weak');
+$('checkBtn').onclick = () => enterMode('check');
 $('quit').onclick = renderHome;
 $('toManage').onclick = renderManage;
 $('back').onclick = renderHome;

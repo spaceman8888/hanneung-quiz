@@ -25,7 +25,7 @@
   .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
   #feedback p { font-size:19px; font-weight:600; }
   #feedback button { margin:4px 8px 4px 0; }
-  .stats { display:flex; gap:12px; } .stats div { flex:1; text-align:center; } .stats b { display:block; font-size:28px; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
   table { width:100%; border-collapse:collapse; font-size:15px; } td { padding:6px 0; border-bottom:1px solid var(--line); } td + td { text-align:right; }
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   textarea { height:140px; }
@@ -41,10 +41,17 @@
 
   <section id="home">
     <header><h1>한능검 암기</h1><button id="toManage">관리</button></header>
-    <div class="card stats"><div><b id="dueCount">0</b>복습</div><div><b id="newCount">0</b>새 카드</div></div>
+    <div class="card stats">
+      <div><b id="dueCount">0</b>다시 볼 카드</div>
+      <div><b id="newCount">0</b>새 카드</div>
+      <div><b id="doneCount">0</b>완료</div>
+      <div><b id="todayCount">0</b>오늘 푼 카드</div>
+    </div>
     <select id="eraSelect" aria-label="시대 선택"></select>
     <p><button class="primary" id="start">학습 시작</button></p>
+    <div class="row"><button id="weakBtn">자주 틀린 카드</button><button id="checkBtn">완료 카드 점검</button></div>
     <p id="homeMsg" class="muted"></p>
+    <p class="muted">시대별: 완료 / 학습 중 / 전체</p>
     <table id="eraTable"></table>
   </section>
 
@@ -60,7 +67,7 @@
       <p><button class="primary">확인</button></p>
     </form>
     <div id="feedback"></div>
-    <p><button id="flag">신고</button></p>
+    <div class="row"><button id="known">이미 알아요</button><button id="flag">신고</button></div>
   </section>
 
   <section id="manage" hidden>
@@ -71,14 +78,14 @@
     <div class="row"><select id="importEra" aria-label="가져올 카드의 시대"></select><button id="importBtn">가져오기</button></div>
     <button id="clearCustomBtn">가져온 카드 모두 삭제</button>
     <p id="importMsg" class="muted"></p>
-    <h2>설정</h2>
-    <label>하루 새 카드 수 <input type="number" min="1" max="200" id="newLimit"></label>
     <h2>기록 백업</h2>
     <div class="row"><button id="exportBtn">내보내기</button><button id="importBackupBtn">불러오기</button></div>
     <input type="file" id="backupFile" accept="application/json,.json" hidden>
     <p id="backupMsg" class="muted"></p>
     <h2>신고한 카드</h2>
     <ul id="flagList"></ul>
+    <h2>완료 카드</h2>
+    <details><summary id="doneSummary">완료 카드 (0)</summary><ul id="doneList"></ul></details>
   </section>
 </main>
 <script type="module" src="app.js"></script>
