@@ -35,8 +35,10 @@ let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, batchSize = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검' };
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', check: '완료 카드 점검', period: '시기 맞히기' };
+const SCHEDULED = new Set(['normal', 'period']);
 const EMPTY_MSG = {
+  period: '시기 문제를 모두 완료했어요!',
   normal: '모든 카드를 완료했어요! 완료 카드 점검으로 확인해 보세요.',
   weak: '자주 틀린 카드가 없어요.',
   check: '완료 카드가 없어요.',
@@ -58,6 +60,8 @@ function renderHome() {
   cancelTimer();
   const era = $('eraSelect').value;
   const n = L.counts(allCards().filter(c => !era || c.era === era), progress, stats.tick);
+  const pn = L.counts(allCards().filter(c => c.type === '시기' && (!era || c.era === era)), progress, stats.tick);
+  $('periodBtn').textContent = `시기 맞히기 (${pn.fresh + pn.learning})`;
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
@@ -88,11 +92,11 @@ function enterMode(m) {
 function startBatch() {
   cancelTimer();
   const era = $('eraSelect').value || null;
-  const batch = mode === 'normal'
-    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era })
+  const batch = SCHEDULED.has(mode)
+    ? L.buildBatch(allCards(), progress, { tick: stats.tick, era, type: mode === 'period' ? '시기' : null })
     : L.practiceBatch(allCards(), progress, { mode, skip: practiced, era });
   if (!batch.length) {
-    $('homeMsg').textContent = mode !== 'normal' && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
+    $('homeMsg').textContent = !SCHEDULED.has(mode) && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return renderHome();
   }
   batch.forEach(c => practiced.add(c.id));
@@ -153,7 +157,7 @@ function commit(correct) {
   const done = L.submit(session, correct);
   if (done) {
     const wrong = session.wrong.has(id);
-    if (mode === 'normal') progress[id] = L.schedule(progress[id], { wrong }, stats.tick);
+    if (SCHEDULED.has(mode)) progress[id] = L.schedule(progress[id], { wrong }, stats.tick);
     else if (wrong) progress[id] = L.relapse(progress[id], stats.tick);
     save('progress', progress);
     bumpStats();
@@ -247,6 +251,7 @@ fillEras($('eraSelect'), true);
 fillEras($('importEra'), false);
 $('importEra').value = '기타';
 $('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); };
+$('periodBtn').onclick = () => enterMode('period');
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
 $('checkBtn').onclick = () => enterMode('check');
