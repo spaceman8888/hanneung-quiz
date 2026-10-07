@@ -90,12 +90,20 @@ export function shuffle(arr, rng = Math.random) {
 const kind2 = s => normalize(s).slice(-2);
 const kind1 = s => normalize(s).slice(-1);
 
+const NATIONS = ['고구려', '백제', '신라', '가야', '발해'];
+const nationOf = front => {
+  let best = null, at = Infinity;
+  for (const n of NATIONS) { const i = front.indexOf(n); if (i >= 0 && i < at) { best = n; at = i; } }
+  return best;
+};
+
 export function pickChoices(card, pool, rng = Math.random) {
   const isPeriod = card.type === '시기';
   const others = pool.filter(c => c.back !== card.back && (c.type === '시기') === isPeriod);
   const sameEra = others.filter(c => c.era === card.era);
   const k2 = kind2(card.back), k1 = kind1(card.back);
-  const tiers = isPeriod ? [sameEra] : [
+  const nat = isPeriod ? nationOf(card.front) : null;
+  const tiers = isPeriod ? [sameEra.filter(c => nationOf(c.front) === nat), sameEra] : [
     sameEra.filter(c => kind2(c.back) === k2),
     sameEra.filter(c => c.type === card.type && kind1(c.back) === k1),
     others.filter(c => c.type === card.type && kind2(c.back) === k2),

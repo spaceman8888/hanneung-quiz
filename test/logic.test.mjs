@@ -303,3 +303,22 @@ test('buildBatch: type filter', () => {
   const cs = [mk('a', 'x'), { ...mk('b', '세종'), type: '시기' }];
   assert.deepEqual(buildBatch(cs, {}, { tick: 0, type: '시기' }).map(c => c.id), ['b']);
 });
+
+test('pickChoices: 시기 distractors prefer kings of the same country (first country named)', () => {
+  const p = (id, front, back) => ({ id, front, back, era: '통일신라·발해', type: '시기' });
+  const pool = [
+    p(1, '발해의 장문휴 산둥 공격 — 어느 왕 때?', '무왕'), p(2, '발해의 상경 천도 — 어느 왕 때?', '문왕'),
+    p(3, '발해 해동성국 — 어느 왕 때?', '선왕'),
+    p(4, '신라의 녹읍 폐지 — 어느 왕 때?', '신문왕'), p(5, '신라의 정전 지급 — 어느 왕 때?', '성덕왕'),
+    p(6, '신라 독서삼품과 — 어느 왕 때?', '원성왕'), p(7, '신라의 발해 공격 — 어느 왕 때?', '성덕왕'),
+    p(8, '신라의 청해진 설치 — 어느 왕 때?', '흥덕왕'),
+  ];
+  for (let i = 0; i < 30; i++) {
+    const ch = pickChoices(pool[0], pool);
+    assert.ok(ch.includes('문왕') && ch.includes('선왕'), ch.join());
+  }
+  for (let i = 0; i < 30; i++) {
+    const ch = pickChoices(pool[3], pool);          // 신라 card: no 발해 king among the options
+    assert.ok(!ch.some(b => ['무왕', '문왕', '선왕'].includes(b)), ch.join());
+  }
+});
