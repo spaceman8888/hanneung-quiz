@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, normalize, isShort, ERAS,
   hashId, parseQuizlet, mergeCards, pickChoices, orderLabel, makeOrderQuestion,
-  entry, review, recall, migrate, dayOf, dailyNew, MATURE,
+  entry, review, recall, migrate, dayOf, dailyNew, MATURE, noteIndex, itemRecall,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats } from '../logic.js';
 
@@ -390,4 +390,29 @@ test('makeOrderQuestion between prompt has a space before 와(과) only once, no
   const q = makeOrderQuestion(dated, { kind: 'between', rng: seeded(3) });
   assert.match(q.prompt, /^\(가\) .+와\(과\) \(나\) .+ 사이에 있었던 일은\?$/);
   assert.ok(!q.prompt.includes(' 와(과)'));
+});
+
+const NOTES = [{ era: '고려', flow: ['a', 'b', 'c'], topics: [
+  { title: '왕', items: [{ id: 'x', head: '광종', key: 'k', why: 'w', cards: ['k0', 'k1'] }] },
+  { title: '헷갈리는 것', items: [{ id: 'y', head: 't', key: 'k', why: 'w', cards: ['k1', 'k2'] }] }] }];
+
+test('noteIndex: card -> first item in document order', () => {
+  const idx = noteIndex(NOTES);
+  assert.equal(idx.get('k0').id, 'x');
+  assert.equal(idx.get('k1').id, 'x');
+  assert.equal(idx.get('k2').id, 'y');
+  assert.equal(idx.get('k9'), undefined);
+});
+
+test('itemRecall: mean recall of linked cards, unseen = 0', () => {
+  const item = NOTES[0].topics[0].items[0];
+  assert.equal(itemRecall(item, {}, 5), 0);
+  const r = itemRecall(item, { k0: S(10, 0, 10) }, 10);
+  assert.ok(Math.abs(r - 0.45) < 1e-9);
+});
+
+test('buildBatch: ids limits the pool, skip ends the round', () => {
+  const ids = new Set(['k1', 'k3']);
+  assert.deepEqual(buildBatch(cardsN(5), {}, { day: 0, ids }).map(c => c.id), ['k1', 'k3']);
+  assert.deepEqual(buildBatch(cardsN(5), {}, { day: 0, ids, skip: new Set(['k1', 'k3']) }), []);
 });

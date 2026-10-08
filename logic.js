@@ -138,10 +138,11 @@ export function pickChoices(card, pool, rng = Math.random) {
   return shuffle([card.back, ...wrong], rng);
 }
 
-export function buildBatch(cards, progress, { day, era = null, type = null, size = BATCH_SIZE }) {
+export function buildBatch(cards, progress, { day, era = null, type = null, ids = null, skip = new Set(), size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
-  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type));
+  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type)
+    && (!ids || ids.has(c.id)) && !skip.has(c.id));
   const seen = pool.filter(c => p(c.id).s);
   const due = seen.filter(c => p(c.id).due <= day).sort(forgot);
   const fresh = pool.filter(c => !p(c.id).s);
@@ -256,4 +257,16 @@ export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.r
     if (wrong) return { kind: k, prompt: `(가) ${orderLabel(a)}와(과) (나) ${orderLabel(b)} 사이에 있었던 일은?`, options: shuffle([answer, ...wrong], rng), answer, ends: [a, b] };
   }
   return null;
+}
+
+// 핵심 노트: card id -> first item (document order) that links it.
+export function noteIndex(notes) {
+  const idx = new Map();
+  for (const { topics } of notes) for (const { items } of topics) for (const it of items)
+    for (const id of it.cards) if (!idx.has(id)) idx.set(id, it);
+  return idx;
+}
+
+export function itemRecall(item, progress, day) {
+  return item.cards.reduce((s, id) => s + recall(progress[id], day), 0) / item.cards.length;
 }
