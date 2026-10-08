@@ -38,7 +38,8 @@
   #notes header input { width:auto; }
   #notesBody details { scroll-margin-top:72px; }
   #notesBody details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:6px 0; padding:10px 12px; }
-  #notesBody summary { display:flex; gap:8px; align-items:baseline; }
+  #notesBody summary { display:flex; gap:8px; align-items:baseline; list-style:none; }
+  #notesBody summary::-webkit-details-marker { display:none; }
   #notesBody summary::before { content:'▸'; color:var(--muted); } #notesBody details[open] > summary::before { content:'▾'; }
   #notesBody summary .key { flex:1; } #notesBody summary .pct { color:var(--muted); font-size:13px; }
   #notesBody details p { margin:8px 0; }

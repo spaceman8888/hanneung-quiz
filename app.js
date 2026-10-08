@@ -122,7 +122,7 @@ function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
   const era = $('eraSelect').value;
-  $('progressText').textContent = `${MODE_LABEL[mode]}${era ? ' · ' + era : ''} · ${doneCount}장 풀이`;
+  $('progressText').textContent = `${MODE_LABEL[mode]}${era && mode !== 'note' ? ' · ' + era : ''} · ${doneCount}장 풀이`;
   const item = session.queue[0];
   if (!item) return startBatch();
   const { card } = item;
@@ -183,8 +183,9 @@ function renderNotes(era = null, focusId = null) {
     $('notesTitle').textContent = '핵심 노트';
     body.replaceChildren(el('p', '시대를 고르세요. 오른쪽 %는 그 시대 카드를 지금 기억하는 정도예요.', 'muted'), ...notes.map(n => {
       const its = n.topics.flatMap(t => t.items);
-      const pct = Math.round(100 * its.reduce((s, it) => s + L.itemRecall(it, progress, day), 0) / its.length);
-      const b = btn('', () => renderNotes(n.era), 'eraRow');
+      const inEra = allCards().filter(c => c.era === n.era);
+      const pct = Math.round(100 * L.counts(inEra, progress, day).recall / Math.max(1, inEra.length));
+      const b = btn('', () => { history.pushState('era', ''); renderNotes(n.era); }, 'eraRow');
       b.append(el('span', n.era), el('span', `${its.length}개 항목 · ${pct}%`));
       return b;
     }));
@@ -192,7 +193,7 @@ function renderNotes(era = null, focusId = null) {
   }
   const n = notes.find(x => x.era === era);
   $('notesTitle').textContent = `${era} 노트`;
-  const parts = [btn('← 시대 목록', () => renderNotes()), el('p', n.flow.join(' → '), 'flow')];
+  const parts = [btn('← 시대 목록', () => (history.state === 'era' ? history.back() : renderNotes())), el('p', n.flow.join(' → '), 'flow')];
   for (const t of n.topics) {
     parts.push(el('h2', t.title));
     for (const it of t.items) parts.push(noteItem(it, day, it.id === focusId));
@@ -383,8 +384,12 @@ $('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
 $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
 $('back').onclick = goHome;
-window.onpopstate = () => { if (noteFrom) { noteFrom = false; show('study'); } else renderHome(); };
-$('notesBack').onclick = goHome;
+window.onpopstate = () => {
+  if (noteFrom) { noteFrom = false; show('study'); }
+  else if (history.state === 1 && !$('notes').hidden) renderNotes();   // era note -> era list
+  else renderHome();
+};
+$('notesBack').onclick = () => (!noteFrom && history.state === 'era' ? history.go(-2) : goHome());
 $('notesBtn').onclick = () => renderNotes();
 $('hideKeys').onchange = e => {
   hideKeys = e.target.checked;
@@ -400,6 +405,7 @@ try {
   if (!Array.isArray(data)) throw 0;
   baseCards = data;
 } catch { warn('기본 카드를 불러오지 못했습니다.'); }
+renderHome();
 try {
   const res = await fetch('notes.json');
   const data = res.ok ? await res.json() : null;
@@ -408,7 +414,6 @@ try {
   noteIdx = L.noteIndex(notes);
   $('notesBtn').hidden = false;
 } catch {}
-renderHome();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 navigator.storage?.persist?.().then(ok => {
   $('persistMsg').textContent = ok ? '기록 보호: 켜짐 — 브라우저가 학습 기록을 자동으로 지우지 않습니다.'
