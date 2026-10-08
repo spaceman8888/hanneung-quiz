@@ -126,7 +126,7 @@ export function pickChoices(card, pool, rng = Math.random) {
   } else if (card.type === '사진') {
     tiers = [others.filter(c => c.kind === card.kind), others];
   } else if (card.type === '지도') {
-    tiers = [sameEra, others];
+    tiers = [sameEra.filter(c => c.front === card.front), sameEra, others];
   } else {
     const k2 = kind2(card.back), k1 = kind1(card.back);
     tiers = [

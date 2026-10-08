@@ -34,11 +34,12 @@ let stats = load('stats', { date: '', count: 0, fresh: 0 });
 let exam = load('exam', '');
 let hideKeys = load('hideKeys', false);
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
+let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드' };
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드', photo: '사진 고르기' };
 const MODE_TYPE = { period: '시기', judge: '판별' };
 const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.' };
 
@@ -102,6 +103,7 @@ function enterMode(m) {
 function startBatch() {
   cancelTimer();
   if (mode === 'order') return renderOrder();
+  if (mode === 'photo') return renderPhoto();
   const era = $('eraSelect').value || null;
   const day = L.dayOf();
   const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, era })
@@ -128,6 +130,8 @@ function renderQuestion() {
   const { card } = item;
   $('qTag').textContent = `${card.era} · ${card.type}`;
   $('qFront').textContent = card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
+  showMedia(card);
+  $('choices').className = 'choices';
   $('flag').hidden = false;
   $('known').hidden = false;
   $('dunno').hidden = false;
@@ -159,6 +163,7 @@ function onAnswer(correct, button) {
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
+  if (card.note) $('feedback').append(el('p', card.note, 'muted'));
   if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
   const item = noteIdx.get(card.id);
@@ -213,6 +218,10 @@ function noteItem(it, day, open) {
   const s = el('summary');
   s.append(el('b', it.head), key, el('span', `${Math.round(100 * L.itemRecall(it, progress, day))}%`, 'pct'));
   d.append(s, el('p', it.why));
+  const pics = it.cards.map(id => cardById.get(id)).filter(c => c?.img).slice(0, 4);
+  if (pics.length) d.append(thumbs(pics));
+  const spot = it.cards.map(id => cardById.get(id)).find(c => c?.geo);
+  if (spot && mapData) { const m = el('div', null, 'noteMap'); m.append(mapSvg(spot.geo)); d.append(m); }
   if (it.confuse) d.append(el('p', '⚠ ' + it.confuse));
   if (it.memo) d.append(el('p', '🔑 ' + it.memo));
   if (it.table) {
@@ -233,7 +242,8 @@ function grade(card, g) {
 
 // What a wrong option actually belongs to, so every miss teaches the distinction.
 function ownerOf(card, choice) {
-  if (card.type === '시기') return null;
+  if (card.type === '시기' || card.type === '지도') return null;
+  if (card.type === '사진') return allCards().find(c => c.type === '사진' && c.back === choice)?.period;
   const same = allCards().filter(c => c.back === choice && L.choiceClass(c) === L.choiceClass(card));
   return (same.find(c => c.era === card.era) ?? same[0])?.front;
 }
@@ -255,6 +265,8 @@ function renderOrder() {
   show('study');
   $('progressText').textContent = `${MODE_LABEL.order}${era ? ' · ' + era : ''} · ${doneCount}문제 풀이`;
   $('qTag').textContent = orderQ.kind === 'first' ? '순서' : '시기 사이';
+  showMedia({});
+  $('choices').className = 'choices';
   $('qFront').textContent = orderQ.prompt;
   $('known').hidden = true;
   $('flag').hidden = true;
@@ -287,7 +299,84 @@ function commit(correct) {
   renderQuestion();
 }
 
-$('dunno').onclick = () => (mode === 'order' ? onOrderAnswer(null) : onAnswer(false));
+$('dunno').onclick = () => (mode === 'order' ? onOrderAnswer(null) : mode === 'photo' ? onPhotoAnswer(null) : onAnswer(false));
+
+const svgNS = 'http://www.w3.org/2000/svg';
+function mapSvg(geo) {
+  const svg = document.createElementNS(svgNS, 'svg');
+  const [x, y] = L.project(...geo);
+  // ponytail: fixed 600-unit (~6°) window around the dot — close enough to tell nearby sites apart, wide enough to orient
+  const [w, h] = mapData.view.split(' ').slice(2).map(Number), S = 600;
+  const x0 = Math.min(Math.max(x - S / 2, 0), w - S), y0 = Math.min(Math.max(y - S / 2, 0), h - S);
+  svg.setAttribute('viewBox', `${x0} ${y0} ${S} ${S}`);
+  const land = document.createElementNS(svgNS, 'path');
+  land.setAttribute('d', mapData.d);
+  land.setAttribute('class', 'map-land');
+  const dot = document.createElementNS(svgNS, 'circle');
+  dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', 9);
+  dot.setAttribute('class', 'map-dot');
+  svg.append(land, dot);
+  return svg;
+}
+
+function thumbs(cards) {
+  const box = el('div', null, 'thumbs');
+  for (const c of cards) { const im = el('img'); im.src = c.img; im.alt = c.back; im.loading = 'lazy'; box.append(im); }
+  return box;
+}
+
+// Photo / map for the current question; a photo that fails to load (offline) leaves the card answerable.
+function showMedia(card) {
+  const img = $('qImg');
+  img.hidden = !card.img;
+  $('qImgMsg').hidden = true;
+  img.onerror = () => { img.hidden = true; $('qImgMsg').hidden = false; $('qImgMsg').textContent = '사진을 불러오지 못했어요(오프라인). 연결되면 다시 보여요.'; };
+  if (card.img) img.src = card.img; else img.removeAttribute('src');
+  $('qMap').hidden = !(card.geo && mapData);
+  $('qMap').replaceChildren(...(card.geo && mapData ? [mapSvg(card.geo)] : []));
+  $('qCredit').hidden = !card.credit;
+  $('qCredit').textContent = card.credit ? '사진: ' + card.credit : '';
+}
+
+let photoQ = null;
+function renderPhoto() {
+  busy = false;
+  $('feedback').replaceChildren();
+  const era = $('eraSelect').value || null;
+  photoQ = L.makePhotoQuestion(allCards(), { era }) ?? L.makePhotoQuestion(allCards());
+  if (!photoQ) { $('homeMsg').textContent = '사진 카드가 부족해요.'; return goHome(); }
+  show('study');
+  showMedia({});
+  $('progressText').textContent = `${MODE_LABEL.photo} · ${doneCount}문제 풀이`;
+  $('qTag').textContent = '사진 고르기';
+  $('qFront').textContent = photoQ.prompt;
+  $('known').hidden = true;
+  $('flag').hidden = true;
+  $('dunno').hidden = false;
+  $('choices').className = 'choices photoGrid';
+  $('choices').replaceChildren(...photoQ.options.map(c => {
+    const b = btn('', () => onPhotoAnswer(c, b));
+    const im = el('img');
+    im.src = c.img;
+    im.alt = '';
+    b.append(im);
+    return b;
+  }));
+  scrollTo(0, 0);
+}
+
+function onPhotoAnswer(choice, button) {
+  if (busy || !photoQ) return;
+  busy = true;
+  const ok = choice === photoQ.answer;
+  button?.classList.add(ok ? 'ok' : 'bad');
+  [...$('choices').children].forEach((b, i) => {
+    const c = photoQ.options[i];
+    b.append(el('small', `${c.back} · ${c.period}`));
+    if (c === photoQ.answer) b.classList.add('ok');
+  });
+  $('feedback').replaceChildren(el('p', ok ? '정답!' : '오답', ok ? 'ok' : 'bad'), btn('다음', () => { doneCount++; renderPhoto(); }, 'primary'));
+}
 
 $('known').onclick = () => {
   if (busy || !session.queue[0]) return;
@@ -378,6 +467,14 @@ $('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); }
 $('periodBtn').onclick = () => enterMode('period');
 $('judgeBtn').onclick = () => enterMode('judge');
 $('orderBtn').onclick = () => enterMode('order');
+$('photoBtn').onclick = () => enterMode('photo');
+$('dlPhotos').onclick = async () => {
+  const imgs = allCards().filter(c => c.img).map(c => c.img);
+  let done = 0, failed = 0;
+  const one = async src => { try { const r = await fetch(src); if (!r.ok) failed++; } catch { failed++; } $('dlMsg').textContent = `${++done} / ${imgs.length}장 받는 중…`; };
+  for (let i = 0; i < imgs.length; i += 4) await Promise.all(imgs.slice(i, i + 4).map(one));
+  $('dlMsg').textContent = failed ? `${imgs.length - failed}장 받음, ${failed}장 실패 — 연결을 확인하고 다시 눌러 주세요.` : `완료 — ${imgs.length}장, 오프라인에서도 사진이 보여요.`;
+};
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
 $('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
@@ -405,6 +502,8 @@ try {
   if (!Array.isArray(data)) throw 0;
   baseCards = data;
 } catch { warn('기본 카드를 불러오지 못했습니다.'); }
+cardById = new Map(allCards().map(c => [c.id, c]));
+$('photoBtn').hidden = !allCards().some(c => c.type === '사진');
 renderHome();
 try {
   const res = await fetch('notes.json');
@@ -413,6 +512,12 @@ try {
   notes = data;
   noteIdx = L.noteIndex(notes);
   $('notesBtn').hidden = false;
+} catch {}
+try {
+  const res = await fetch('map.json');
+  const data = res.ok ? await res.json() : null;
+  if (typeof data?.d !== 'string') throw 0;
+  mapData = data;
 } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 navigator.storage?.persist?.().then(ok => {

@@ -478,3 +478,15 @@ test('map.json: one land path for the map view, small', async () => {
   assert.match(m.d, /^M/);
   assert.ok(raw.length < 150_000, `${raw.length} bytes`);
 });
+
+test('pickChoices 지도: cards asking the same question come first (삼포 with 삼포)', () => {
+  const m = (id, back, front, era = '조선 전기') => ({ id, front, back, era, type: '지도', geo: [35, 129] });
+  const P = '삼포 중 지도의 ● 지점은?', B = '지도의 ●에서 있었던 전투는?';
+  const pool = [m('a', '부산포', P), m('b', '제포', P), m('c', '염포', P), m('d', '행주 대첩', B), m('e', '진주 대첩', B),
+    m('f', '한산도 대첩', B), m('g', '명량 대첩', B), m('h', '귀주 대첩', B, '고려')];
+  for (let s = 1; s <= 20; s++) {
+    const ch = pickChoices(pool[0], pool, seeded(s));
+    assert.ok(ch.includes('제포') && ch.includes('염포'), ch.join());
+    assert.ok(!ch.includes('귀주 대첩'), ch.join());
+  }
+});
