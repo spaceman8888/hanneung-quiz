@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { ERAS, TYPES, isShort, normalize } from '../logic.js';
 
 const cards = JSON.parse(readFileSync(new URL('../cards.json', import.meta.url), 'utf8'));
+const SAME_PROMPT = new Set(['판별', '사진', '지도']);   // identity is the subject / photo / map dot, not the prompt
 
 test('every card is well-formed', () => {
   const ids = new Set();
@@ -25,7 +26,7 @@ test('every card is well-formed', () => {
 });
 
 test('fronts are unique', () => {
-  const fronts = cards.filter(c => c.type !== '판별').map(c => c.front.trim());
+  const fronts = cards.filter(c => !SAME_PROMPT.has(c.type)).map(c => c.front.trim());
   const dups = fronts.filter((f, i) => fronts.indexOf(f) !== i);
   assert.deepEqual(dups, []);
 });
@@ -42,7 +43,7 @@ test('every era has at least the planned 90% of cards', () => {
 test('fronts are unique after normalization', () => {
   const seen = new Map();
   const dups = [];
-  for (const c of cards.filter(c => c.type !== '판별')) {
+  for (const c of cards.filter(c => !SAME_PROMPT.has(c.type))) {
     const k = normalize(c.front);
     if (seen.has(k)) dups.push(`${seen.get(k)} = ${c.id}`);
     else seen.set(k, c.id);
@@ -91,5 +92,36 @@ test('시기 cards follow the period rules', () => {
     assert.ok((PERIOD[c.era] ?? (() => true))(c.back), `back: ${where}`);
     assert.ok(c.front.endsWith(ENDING[c.era] ?? '— 어느 왕 때?'), `ending: ${where}`);
     assert.ok(!normalize(c.front).includes(normalize(c.back)), `answer in question: ${where}`);
+  }
+});
+
+const KINDS = ['탑', '불상', '건축', '도자기', '그림', '고분·유물', '비석·기타'];
+const byIdAll = new Map(cards.map(c => [c.id, c]));
+
+test('사진 cards: image file, credit, kind, period, note, of', () => {
+  for (const c of cards.filter(c => c.type === '사진')) {
+    const w = JSON.stringify(c);
+    assert.equal(c.img, `img/${c.id}.jpg`, w);
+    assert.ok(existsSync(new URL('../' + c.img, import.meta.url)), `missing ${c.img}`);
+    assert.ok(c.credit?.trim() && KINDS.includes(c.kind) && c.period?.trim(), w);
+    assert.ok(c.note?.trim() && c.note.length <= 60, w);
+    assert.equal(byIdAll.get(c.of)?.era, c.era, w);
+  }
+});
+
+test('지도 cards: geo inside the map, note, of', () => {
+  for (const c of cards.filter(c => c.type === '지도')) {
+    const w = JSON.stringify(c);
+    const [lat, lon] = c.geo ?? [];
+    assert.ok(lat >= 32.5 && lat <= 44 && lon >= 119 && lon <= 133, w);
+    assert.ok(c.note?.trim() && c.note.length <= 60, w);
+    assert.equal(byIdAll.get(c.of)?.era, c.era, w);
+  }
+});
+
+test('photo and map answers are unique within their type', () => {
+  for (const t of ['사진', '지도']) {
+    const backs = cards.filter(c => c.type === t).map(c => c.back);
+    assert.deepEqual(backs.filter((b, i) => backs.indexOf(b) !== i), [], t);
   }
 });
