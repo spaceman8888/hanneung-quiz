@@ -124,7 +124,8 @@ export function pickChoices(card, pool, rng = Math.random) {
   } else if (card.type === '판별') {
     tiers = [sameEra.filter(c => c.group === card.group), sameEra];
   } else if (card.type === '사진') {
-    tiers = [others.filter(c => c.kind === card.kind), others];
+    const sameQ = others.filter(c => c.front === card.front);   // most share the generic prompt; specific ones (벽화 고분, 신문 기사) must stay together
+    tiers = [sameQ.filter(c => c.kind === card.kind), sameQ, others.filter(c => c.kind === card.kind), others];
   } else if (card.type === '지도') {
     tiers = [sameEra.filter(c => c.front === card.front), sameEra, others];
   } else {
@@ -275,7 +276,8 @@ export function itemRecall(item, progress, day) {
   return item.cards.reduce((s, id) => s + recall(progress[id], day), 0) / item.cards.length;
 }
 
-const related = (a, b) => a.includes(b) || b.includes(a);   // 신라 ↔ 통일 신라: both would be right
+const MODERN = new Set(['개항기', '대한 제국']);   // 대한 제국 (1897~) is part of 개항기
+const related = (a, b) => a.includes(b) || b.includes(a) || (MODERN.has(a) && MODERN.has(b));   // 신라 ↔ 통일 신라: both would be right
 
 // 사진 고르기: "다음 중 <period>의 문화유산은?" — one photo of that period, four from unrelated periods.
 export function makePhotoQuestion(cards, { era = null, rng = Math.random } = {}) {

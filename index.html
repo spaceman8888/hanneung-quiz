@@ -24,7 +24,8 @@
   .front { font-size:21px; font-weight:600; min-height:3em; word-break:keep-all; }
   .tag, .muted { color:var(--muted); font-size:14px; }
   .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
-  #feedback p { font-size:19px; font-weight:600; }
+  #feedback p { font-size:19px; font-weight:600; } #feedback p.muted { font-size:15px; font-weight:400; }
+  .photoGrid small.credit { font-size:11px; }
   #feedback button { margin:4px 8px 4px 0; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
   .eraRow { display:flex; justify-content:space-between; width:100%; margin:6px 0; text-align:left; }
@@ -85,7 +86,7 @@
     <header><button id="quit">← 홈</button><span id="progressText" class="muted"></span></header>
     <div class="card">
       <div class="tag" id="qTag"></div>
-      <img id="qImg" hidden alt="">
+      <img id="qImg" hidden alt="문제 사진">
       <p id="qImgMsg" class="muted" hidden></p>
       <div id="qMap" hidden></div>
       <div class="front" id="qFront"></div>

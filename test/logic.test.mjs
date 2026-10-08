@@ -490,3 +490,23 @@ test('pickChoices 지도: cards asking the same question come first (삼포 with
     assert.ok(!ch.includes('귀주 대첩'), ch.join());
   }
 });
+
+test('makePhotoQuestion: 개항기 and 대한 제국 never compete (both would be right)', () => {
+  const pool = [ph('a', '수자기', '개항기', '비석·기타', '개항기'), ph('b', '독립문', '대한 제국', '건축', '개항기'), ph('c', '환구단', '대한 제국', '건축', '개항기'),
+    ph('d', '석가탑', '통일 신라'), ph('e', '월정사 탑', '고려'), ph('f', '정림사 탑', '백제'), ph('g', '원각사 탑', '조선 전기'), ph('h', '진전사 탑', '통일 신라')];
+  for (let s = 1; s <= 40; s++) {
+    const q = makePhotoQuestion(pool, { rng: seeded(s) });
+    if (!q || !['개항기', '대한 제국'].includes(q.answer.period)) continue;
+    assert.ok(q.options.filter(o => ['개항기', '대한 제국'].includes(o.period)).length === 1, q.options.map(o => o.back).join());
+  }
+});
+
+test('pickChoices 사진: cards asking the same question come first (tomb murals with tombs)', () => {
+  const T = '사진 속 벽화가 그려진 고분은?';
+  const pool = [{ ...ph('a', '안악 3호분', '고구려', '고분·유물'), front: T }, { ...ph('b', '무용총', '고구려', '고분·유물'), front: T },
+    { ...ph('c', '강서대묘', '고구려', '고분·유물'), front: T }, { ...ph('d', '각저총', '고구려', '고분·유물'), front: T },
+    { ...ph('e', '쌍영총', '고구려', '고분·유물'), front: T }, ph('f', '거친무늬 거울', '청동기', '고분·유물'), ph('g', '정병', '고려', '고분·유물')];
+  for (let s = 1; s <= 20; s++) {
+    assert.deepEqual([...pickChoices(pool[0], pool, seeded(s))].sort(), ['각저총', '강서대묘', '무용총', '쌍영총', '안악 3호분']);
+  }
+});

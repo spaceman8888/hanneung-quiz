@@ -164,8 +164,9 @@ function onAnswer(correct, button) {
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
-  if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
-  $('feedback').append(btn('다음', () => commit(false), 'primary'));
+  if (correct && !card.note) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
+  $('feedback').append(btn('다음', () => commit(correct), 'primary'));
+  if (correct) return;
   const item = noteIdx.get(card.id);
   if (item) $('feedback').append(btn('노트 보기', () => { noteFrom = true; history.pushState(2, ''); renderNotes(card.era, item.id); }));
 }
@@ -322,7 +323,9 @@ function mapSvg(geo) {
 function thumbs(cards) {
   const box = el('div', null, 'thumbs');
   for (const c of cards) { const im = el('img'); im.src = c.img; im.alt = c.back; im.loading = 'lazy'; box.append(im); }
-  return box;
+  const wrap = el('div');
+  wrap.append(box, el('p', '사진: ' + [...new Set(cards.map(c => c.credit))].join(' / '), 'tag'));
+  return wrap;
 }
 
 // Photo / map for the current question; a photo that fails to load (offline) leaves the card answerable.
@@ -331,7 +334,8 @@ function showMedia(card) {
   img.hidden = !card.img;
   $('qImgMsg').hidden = true;
   img.onerror = () => { img.hidden = true; $('qImgMsg').hidden = false; $('qImgMsg').textContent = '사진을 불러오지 못했어요(오프라인). 연결되면 다시 보여요.'; };
-  if (card.img) img.src = card.img; else img.removeAttribute('src');
+  img.removeAttribute('src');   // otherwise the previous photo stays painted until the next one loads
+  if (card.img) img.src = card.img;
   $('qMap').hidden = !(card.geo && mapData);
   $('qMap').replaceChildren(...(card.geo && mapData ? [mapSvg(card.geo)] : []));
   $('qCredit').hidden = !card.credit;
@@ -354,11 +358,13 @@ function renderPhoto() {
   $('flag').hidden = true;
   $('dunno').hidden = false;
   $('choices').className = 'choices photoGrid';
-  $('choices').replaceChildren(...photoQ.options.map(c => {
+  $('choices').replaceChildren(...photoQ.options.map((c, i) => {
     const b = btn('', () => onPhotoAnswer(c, b));
+    b.setAttribute('aria-label', `사진 ${i + 1}`);
     const im = el('img');
+    im.alt = `사진 ${i + 1}`;
+    im.onerror = () => { $('qImgMsg').hidden = false; $('qImgMsg').textContent = '사진을 불러오지 못했어요(오프라인). 관리 → 사진 모두 내려받기를 해 두면 오프라인에서도 보여요.'; };
     im.src = c.img;
-    im.alt = '';
     b.append(im);
     return b;
   }));
@@ -372,7 +378,7 @@ function onPhotoAnswer(choice, button) {
   button?.classList.add(ok ? 'ok' : 'bad');
   [...$('choices').children].forEach((b, i) => {
     const c = photoQ.options[i];
-    b.append(el('small', `${c.back} · ${c.period}`));
+    b.append(el('small', `${c.back} · ${c.period}`), el('small', '사진: ' + c.credit, 'credit'));
     if (c === photoQ.answer) b.classList.add('ok');
   });
   $('feedback').replaceChildren(el('p', ok ? '정답!' : '오답', ok ? 'ok' : 'bad'), btn('다음', () => { doneCount++; renderPhoto(); }, 'primary'));
