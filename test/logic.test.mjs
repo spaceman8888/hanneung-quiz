@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { today, normalize, isShort, ERAS,
   hashId, parseQuizlet, mergeCards, pickChoices, orderLabel, makeOrderQuestion,
   entry, review, recall, migrate, dayOf, dailyNew, MATURE, noteIndex, itemRecall,
+  makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats } from '../logic.js';
 
@@ -415,4 +416,56 @@ test('buildBatch: ids limits the pool, skip ends the round', () => {
   const ids = new Set(['k1', 'k3']);
   assert.deepEqual(buildBatch(cardsN(5), {}, { day: 0, ids }).map(c => c.id), ['k1', 'k3']);
   assert.deepEqual(buildBatch(cardsN(5), {}, { day: 0, ids, skip: new Set(['k1', 'k3']) }), []);
+});
+
+const ph = (id, back, period, kind = '탑', era = '고려') => ({ id, front: '사진 속 문화유산은?', back, era, type: '사진', period, kind, img: `img/${id}.jpg` });
+
+test('pickChoices 사진: only photo answers, same kind first', () => {
+  const pool = [ph('a', '석가탑', '통일 신라'), ph('b', '다보탑', '통일 신라'), ph('c', '월정사 탑', '고려'), ph('d', '정림사 탑', '백제'),
+    ph('e', '미륵사 탑', '백제'), ph('f', '반가사유상', '삼국', '불상'), { id: 'x', front: 'x', back: '세종', era: '고려', type: '인물' }];
+  for (let s = 1; s <= 20; s++) {
+    const ch = pickChoices(pool[0], pool, seeded(s));
+    assert.equal(ch.length, 5);
+    assert.ok(['석가탑', '다보탑', '월정사 탑', '정림사 탑', '미륵사 탑'].every(x => ch.includes(x)), ch.join());
+  }
+});
+
+test('pickChoices 지도: only map answers, same era first', () => {
+  const m = (id, back, era) => ({ id, front: '지도에 ● 표시된 곳은?', back, era, type: '지도', geo: [37, 127] });
+  const pool = [m('a', '행주산성', '조선 전기'), m('b', '한산도', '조선 전기'), m('c', '진주성', '조선 전기'), m('d', '명량', '조선 전기'),
+    m('e', '탄금대', '조선 전기'), m('f', '귀주', '고려'), ph('p', '석가탑', '통일 신라')];
+  for (let s = 1; s <= 20; s++) {
+    const ch = pickChoices(pool[0], pool, seeded(s));
+    assert.deepEqual([...ch].sort(), ['명량', '진주성', '탄금대', '한산도', '행주산성']);
+  }
+});
+
+test('makePhotoQuestion: one answer of the period, 4 others from unrelated periods, distinct names', () => {
+  const pool = [ph('a', '석가탑', '통일 신라'), ph('b', '분황사 탑', '신라'), ph('c', '월정사 탑', '고려'), ph('d', '정림사 탑', '백제'),
+    ph('e', '미륵사 탑', '백제'), ph('f', '경천사 탑', '고려'), ph('g', '원각사 탑', '조선 전기'), ph('h', '감은사 탑', '통일 신라')];
+  for (let s = 1; s <= 40; s++) {
+    const q = makePhotoQuestion(pool, { rng: seeded(s) });
+    assert.ok(q);
+    assert.equal(q.options.length, 5);
+    assert.ok(q.options.includes(q.answer));
+    const p = q.answer.period;
+    assert.equal(q.prompt, `다음 중 ${p}의 문화유산은?`);
+    for (const o of q.options) if (o !== q.answer) assert.ok(!o.period.includes(p) && !p.includes(o.period), `${p} vs ${o.period}`);
+    assert.equal(new Set(q.options.map(o => o.back)).size, 5);
+  }
+  assert.equal(makePhotoQuestion(pool.slice(0, 2)), null);
+});
+
+test('makePhotoQuestion: era filter limits the answer, not the distractors', () => {
+  const pool = [ph('a', '석가탑', '통일 신라', '탑', '통일신라·발해'), ph('c', '월정사 탑', '고려'), ph('d', '정림사 탑', '백제', '탑', '삼국'),
+    ph('e', '미륵사 탑', '백제', '탑', '삼국'), ph('f', '경천사 탑', '고려'), ph('g', '원각사 탑', '조선 전기', '탑', '조선 전기')];
+  for (let s = 1; s <= 20; s++) assert.equal(makePhotoQuestion(pool, { era: '통일신라·발해', rng: seeded(s) }).answer.id, 'a');
+});
+
+test('project: corners and Seoul land inside the map', () => {
+  const [w, h] = MAP_VIEW.split(' ').slice(2).map(Number);
+  assert.deepEqual(project(MAP.lat1, MAP.lon0), [0, 0]);
+  const [x, y] = project(37.57, 126.98);
+  assert.ok(x > 0 && x < w && y > 0 && y < h);
+  assert.deepEqual(project(MAP.lat0, MAP.lon1), [w, h]);
 });

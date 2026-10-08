@@ -2,7 +2,7 @@ export const SHORT_MAX = 10;
 export const BATCH_SIZE = 7;
 export const CHOICES = 5;
 export const ERAS = ['선사', '고조선·초기국가', '삼국', '통일신라·발해', '고려', '조선 전기', '조선 후기', '개항기', '일제강점기', '현대', '통시대', '기타'];
-export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '판별', '기타'];
+export const TYPES = ['인물', '사건', '제도', '문화재', '단체', '세시풍속', '시기', '판별', '사진', '지도', '기타'];
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -111,7 +111,7 @@ const nationOf = front => {
   return best;
 };
 
-export const choiceClass = c => (c.type === '시기' || c.type === '판별' ? c.type : '');
+export const choiceClass = c => (['시기', '판별', '사진', '지도'].includes(c.type) ? c.type : '');
 
 export function pickChoices(card, pool, rng = Math.random) {
   const others = pool.filter(c => c.back !== card.back && choiceClass(c) === choiceClass(card)
@@ -123,6 +123,10 @@ export function pickChoices(card, pool, rng = Math.random) {
     tiers = [sameEra.filter(c => nationOf(c.front) === nat), sameEra];
   } else if (card.type === '판별') {
     tiers = [sameEra.filter(c => c.group === card.group), sameEra];
+  } else if (card.type === '사진') {
+    tiers = [others.filter(c => c.kind === card.kind), others];
+  } else if (card.type === '지도') {
+    tiers = [sameEra, others];
   } else {
     const k2 = kind2(card.back), k1 = kind1(card.back);
     tiers = [
@@ -270,3 +274,29 @@ export function noteIndex(notes) {
 export function itemRecall(item, progress, day) {
   return item.cards.reduce((s, id) => s + recall(progress[id], day), 0) / item.cards.length;
 }
+
+const related = (a, b) => a.includes(b) || b.includes(a);   // 신라 ↔ 통일 신라: both would be right
+
+// 사진 고르기: "다음 중 <period>의 문화유산은?" — one photo of that period, four from unrelated periods.
+export function makePhotoQuestion(cards, { era = null, rng = Math.random } = {}) {
+  const photos = cards.filter(c => c.type === '사진');
+  const candidates = photos.filter(c => !era || c.era === era);
+  for (const period of shuffle([...new Set(candidates.map(c => c.period))], rng)) {
+    const answer = shuffle(candidates.filter(c => c.period === period), rng)[0];
+    const pool = photos.filter(c => !related(c.period, period));
+    const ranked = [...shuffle(pool.filter(c => c.kind === answer.kind), rng), ...shuffle(pool.filter(c => c.kind !== answer.kind), rng)];
+    const wrong = [];
+    for (const c of ranked) if (wrong.length < CHOICES - 1 && c.back !== answer.back && !wrong.some(w => w.back === c.back)) wrong.push(c);
+    if (wrong.length === CHOICES - 1) return { prompt: `다음 중 ${period}의 문화유산은?`, options: shuffle([answer, ...wrong], rng), answer };
+  }
+  return null;
+}
+
+// Map of the peninsula and surroundings: equirectangular, longitude scaled by cos 38°.
+export const MAP = { lon0: 119, lon1: 133, lat0: 32.5, lat1: 44, k: 100 };
+const COS = Math.cos(38 * Math.PI / 180);
+const r1 = v => Math.round(v * 10) / 10;
+export function project(lat, lon) {
+  return [r1((lon - MAP.lon0) * COS * MAP.k), r1((MAP.lat1 - lat) * MAP.k)];
+}
+export const MAP_VIEW = `0 0 ${project(MAP.lat0, MAP.lon1).join(' ')}`;
