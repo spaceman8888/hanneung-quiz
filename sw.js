@@ -1,6 +1,6 @@
 importScripts('version.js');
 const CACHE = self.APP_VERSION;
-const FILES = ['./', 'index.html', 'version.js', 'app.js', 'logic.js', 'cards.json', 'manifest.json', 'icon-192.png', 'icon-512.png'];
+const FILES = ['./', 'index.html', 'version.js', 'app.js', 'logic.js', 'cards.json', 'notes.json', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))));

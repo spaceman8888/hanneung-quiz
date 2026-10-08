@@ -34,6 +34,16 @@
   ul { padding-left:20px; } li { margin:6px 0; }
   [hidden] { display:none !important; }
   #warn { color:var(--bad); margin:0; }
+  #notes header input { width:auto; }
+  #notesBody details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:6px 0; padding:10px 12px; }
+  #notesBody summary { display:flex; gap:8px; align-items:baseline; }
+  #notesBody summary::before { content:'▸'; color:var(--muted); } #notesBody details[open] > summary::before { content:'▾'; }
+  #notesBody summary .key { flex:1; } #notesBody summary .pct { color:var(--muted); font-size:13px; }
+  #notesBody details p { margin:8px 0; }
+  #notesBody .flow { font-weight:600; color:var(--accent); }
+  #notesBody table { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
+  #notesBody td, #notesBody th { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
+  .hide .key:not(.shown) { color:transparent; background:var(--line); border-radius:4px; }
 </style>
 </head>
 <body>
@@ -53,7 +63,7 @@
     <select id="eraSelect" aria-label="시대 선택"></select>
     <p><button class="primary" id="start">학습 시작</button></p>
     <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
-    <div class="row"><button id="orderBtn">순서 문제</button></div>
+    <div class="row"><button id="orderBtn">순서 문제</button><button id="notesBtn" hidden>핵심 노트</button></div>
     <div class="row"><button id="weakBtn">자주 틀린 카드</button></div>
     <p id="homeMsg" class="muted"></p>
     <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습<br>완료 = 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 점점 넓혀 다시 나옵니다.</p>
@@ -69,6 +79,12 @@
     <div class="choices" id="choices"></div>
     <div id="feedback"></div>
     <div class="row"><button id="dunno">모르겠어요</button><button id="known">이미 알아요</button><button id="flag">신고</button></div>
+  </section>
+
+  <section id="notes" hidden>
+    <header><button id="notesBack">← 홈</button><label class="muted"><input type="checkbox" id="hideKeys"> 가리고 떠올리기</label></header>
+    <h1 id="notesTitle">핵심 노트</h1>
+    <div id="notesBody"></div>
   </section>
 
   <section id="manage" hidden>

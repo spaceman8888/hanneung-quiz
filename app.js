@@ -5,7 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string' };
+const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean' };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -32,17 +32,19 @@ let custom = load('customCards', []);
 let progress = L.migrate(load('progress', {}), L.dayOf());
 let stats = load('stats', { date: '', count: 0, fresh: 0 });
 let exam = load('exam', '');
+let hideKeys = load('hideKeys', false);
+let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제' };
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드' };
 const MODE_TYPE = { period: '시기', judge: '판별' };
-const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.' };
+const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.' };
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => {
-  ['home', 'study', 'manage'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
@@ -101,11 +103,11 @@ function startBatch() {
   if (mode === 'order') return renderOrder();
   const era = $('eraSelect').value || null;
   const day = L.dayOf();
-  const batch = mode === 'weak'
-    ? L.weakBatch(allCards(), progress, { day, skip: practiced, era })
+  const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, era })
+    : mode === 'note' ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
     : L.buildBatch(allCards(), progress, { day, era, type: MODE_TYPE[mode] ?? null });
   if (!batch.length) {
-    $('homeMsg').textContent = mode === 'weak' && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
+    $('homeMsg').textContent = (mode === 'weak' || mode === 'note') && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return goHome();
   }
   batch.forEach(c => practiced.add(c.id));
@@ -158,6 +160,66 @@ function onAnswer(correct, button) {
   $('feedback').replaceChildren(p);
   if (correct) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
   $('feedback').append(btn('다음', () => commit(false), 'primary'));
+  const item = noteIdx.get(card.id);
+  if (item) $('feedback').append(btn('노트 보기', () => { noteFrom = true; history.pushState(2, ''); renderNotes(card.era, item.id); }));
+}
+
+const el = (tag, text, cls) => {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+};
+
+// No cancelTimer(): opening a note from a wrong answer must keep the study session intact.
+function renderNotes(era = null, focusId = null) {
+  const day = L.dayOf();
+  const body = $('notesBody');
+  body.classList.toggle('hide', hideKeys);
+  $('hideKeys').checked = hideKeys;
+  $('notesBack').textContent = noteFrom ? '← 문제로' : '← 홈';
+  if (!era) {
+    $('notesTitle').textContent = '핵심 노트';
+    body.replaceChildren(el('p', '시대를 고르세요. 오른쪽 %는 그 시대 카드를 지금 기억하는 정도예요.', 'muted'), ...notes.map(n => {
+      const its = n.topics.flatMap(t => t.items);
+      const pct = Math.round(100 * its.reduce((s, it) => s + L.itemRecall(it, progress, day), 0) / its.length);
+      const b = btn('', () => renderNotes(n.era), 'eraRow');
+      b.append(el('span', n.era), el('span', `${its.length}개 항목 · ${pct}%`));
+      return b;
+    }));
+    return show('notes');
+  }
+  const n = notes.find(x => x.era === era);
+  $('notesTitle').textContent = `${era} 노트`;
+  const parts = [btn('← 시대 목록', () => renderNotes()), el('p', n.flow.join(' → '), 'flow')];
+  for (const t of n.topics) {
+    parts.push(el('h2', t.title));
+    for (const it of t.items) parts.push(noteItem(it, day, it.id === focusId));
+  }
+  body.replaceChildren(...parts);
+  show('notes');
+  if (focusId) document.getElementById('n-' + focusId)?.scrollIntoView({ block: 'start' });
+  else scrollTo(0, 0);
+}
+
+function noteItem(it, day, open) {
+  const d = el('details');
+  d.id = 'n-' + it.id;
+  d.open = open;
+  const key = el('span', it.key, 'key');
+  key.onclick = e => { if (hideKeys && !key.classList.contains('shown')) { e.preventDefault(); key.classList.add('shown'); } };
+  const s = el('summary');
+  s.append(el('b', it.head), key, el('span', `${Math.round(100 * L.itemRecall(it, progress, day))}%`, 'pct'));
+  d.append(s, el('p', it.why));
+  if (it.confuse) d.append(el('p', '⚠ ' + it.confuse));
+  if (it.memo) d.append(el('p', '🔑 ' + it.memo));
+  if (it.table) {
+    const tb = el('table');
+    it.table.forEach((row, i) => { const tr = el('tr'); row.forEach(x => tr.append(el(i ? 'td' : 'th', x))); tb.append(tr); });
+    d.append(tb);
+  }
+  d.append(btn(`이 항목 카드 ${it.cards.length}장 풀기`, () => { noteIds = new Set(it.cards); enterMode('note'); }, 'primary'));
+  return d;
 }
 
 function grade(card, g) {
@@ -320,7 +382,15 @@ $('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
 $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
 $('back').onclick = goHome;
-window.onpopstate = renderHome;
+window.onpopstate = () => { if (noteFrom) { noteFrom = false; show('study'); } else renderHome(); };
+$('notesBack').onclick = goHome;
+$('notesBtn').onclick = () => renderNotes();
+$('hideKeys').onchange = e => {
+  hideKeys = e.target.checked;
+  save('hideKeys', hideKeys);
+  $('notesBody').classList.toggle('hide', hideKeys);
+  $('notesBody').querySelectorAll('.key.shown').forEach(k => k.classList.remove('shown'));
+};
 $('version').textContent = self.APP_VERSION ?? '';
 
 try {
@@ -329,6 +399,14 @@ try {
   if (!Array.isArray(data)) throw 0;
   baseCards = data;
 } catch { warn('기본 카드를 불러오지 못했습니다.'); }
+try {
+  const res = await fetch('notes.json');
+  const data = res.ok ? await res.json() : null;
+  if (!Array.isArray(data)) throw 0;
+  notes = data;
+  noteIdx = L.noteIndex(notes);
+  $('notesBtn').hidden = false;
+} catch {}
 renderHome();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 navigator.storage?.persist?.().then(ok => {
