@@ -469,3 +469,12 @@ test('project: corners and Seoul land inside the map', () => {
   assert.ok(x > 0 && x < w && y > 0 && y < h);
   assert.deepEqual(project(MAP.lat0, MAP.lon1), [w, h]);
 });
+
+test('map.json: one land path for the map view, small', async () => {
+  const { readFileSync } = await import('node:fs');
+  const raw = readFileSync(new URL('../map.json', import.meta.url), 'utf8');
+  const m = JSON.parse(raw);
+  assert.equal(m.view, MAP_VIEW);
+  assert.match(m.d, /^M/);
+  assert.ok(raw.length < 150_000, `${raw.length} bytes`);
+});
