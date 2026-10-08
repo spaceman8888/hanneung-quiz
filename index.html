@@ -34,7 +34,9 @@
   ul { padding-left:20px; } li { margin:6px 0; }
   [hidden] { display:none !important; }
   #warn { color:var(--bad); margin:0; }
+  #notes header { position:sticky; top:0; z-index:1; background:var(--bg); padding:8px 0; }
   #notes header input { width:auto; }
+  #notesBody details { scroll-margin-top:72px; }
   #notesBody details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:6px 0; padding:10px 12px; }
   #notesBody summary { display:flex; gap:8px; align-items:baseline; }
   #notesBody summary::before { content:'▸'; color:var(--muted); } #notesBody details[open] > summary::before { content:'▾'; }

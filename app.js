@@ -92,6 +92,7 @@ function renderHome() {
 
 function enterMode(m) {
   mode = m;
+  noteFrom = false;   // a new session replaces the one a note was opened from
   practiced = new Set();
   $('homeMsg').textContent = '';
   doneCount = 0;
