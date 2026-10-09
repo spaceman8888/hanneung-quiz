@@ -125,3 +125,9 @@ test('photo and map answers are unique within their type', () => {
     assert.deepEqual(backs.filter((b, i) => backs.indexOf(b) !== i), [], t);
   }
 });
+
+test('every card except 사진/지도 has a one-line tip (≤ 90 chars) shown after a miss', () => {
+  const bad = cards.filter(c => c.type !== '사진' && c.type !== '지도'
+    && !(typeof c.tip === 'string' && c.tip.trim() && c.tip.length <= 90 && !c.tip.includes('\n'))).map(c => c.id);
+  assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards without a valid tip`);
+});

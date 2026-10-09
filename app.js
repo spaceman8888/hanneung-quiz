@@ -163,6 +163,7 @@ function onAnswer(correct, button) {
   p.className = correct ? 'ok' : 'bad';
   p.textContent = correct ? '정답!' : `정답: ${card.back}`;
   $('feedback').replaceChildren(p);
+  if (!correct && card.tip) $('feedback').append(el('p', '💡 ' + card.tip, 'tip'));
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
   if (correct && !card.note) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
