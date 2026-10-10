@@ -63,6 +63,8 @@
   #notesBody .flow { font-weight:600; color:var(--accent); }
   #notesBody table { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
   #notesBody td, #notesBody th { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
+  #guide details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:8px 0; padding:10px 12px; } #guide summary { font-weight:600; }
+  #guide li { word-break:keep-all; }
   .hide .key:not(.shown) { color:transparent; background:var(--line); border-radius:4px; }
 </style>
 </head>
@@ -71,7 +73,7 @@
   <p id="warn"></p>
 
   <section id="home">
-    <header><h1>한능검 암기 <small id="version" class="muted"></small></h1><button id="toManage">관리</button></header>
+    <header><h1>한능검 암기 <small id="version" class="muted"></small></h1><span><button id="toGuide">가이드</button> <button id="toManage">관리</button></span></header>
     <div class="card stats">
       <div><b id="dueCount">0</b>오늘 복습</div>
       <div><b id="newCount">0</b>새 카드</div>
@@ -111,6 +113,63 @@
     <header><button id="notesBack">← 홈</button><label class="muted"><input type="checkbox" id="hideKeys"> 가리고 떠올리기</label></header>
     <h1 id="notesTitle">핵심 노트</h1>
     <div id="notesBody"></div>
+  </section>
+
+  <section id="guide" hidden>
+    <header><button id="guideBack">← 홈</button><h1>사용 가이드</h1></header>
+    <h2>이렇게 공부하세요</h2>
+    <p class="muted">카드는 잊을 때쯤 다시 나와요. 매일 조금씩, 떠올려서 답하는 게 핵심이에요.</p>
+    <ol>
+      <li><b>처음 한 번:</b> 관리 → 시험일을 정하세요. 시험 일주일 전까지 모든 카드를 한 번씩 배우도록 하루 새 카드 목표가 홈에 나와요. 같은 곳의 '보기 가리고 먼저 떠올리기'도 켜 두길 추천해요.</li>
+      <li><b>매일:</b> '학습 시작'을 누르세요. 오늘 복습할 카드가 먼저, 그다음 새 카드가 기출에 자주 나온 것부터 나와요. 복습은 그날 다 끝내고, 새 카드는 목표만큼만 하세요. 많이 하면 며칠 뒤 복습이 한꺼번에 몰려요.</li>
+      <li><b>나눠서:</b> 한 번에 1시간보다 아침·저녁 15~20분씩이 더 오래 남아요.</li>
+      <li><b>낯선 시대는 노트 먼저:</b> 핵심 노트에서 그 시대의 흐름(맨 위 화살표 줄)과 항목을 한 번 훑고 카드를 푸세요. 줄거리에 걸린 사실은 잘 안 잊혀요. 틀린 카드에서 '노트 보기'로 앞뒤를 확인하세요.</li>
+      <li><b>일주일에 한두 번:</b> 어느 정도 배운 시대로 '기출형 문제'를 푸세요. 시험처럼 이름 없이 자료만 보고 떠올리는 연습이에요. 시대를 여러 개 골라 섞어 풀면 비슷한 것(고려·조선 제도 등)을 구별하는 힘이 커져요. '자주 틀린 카드'도 함께 정리하세요.</li>
+      <li><b>점수 확인:</b> 홈의 예상 점수 아래 '점수 올리기 좋은 시대'를 먼저 공부하세요.</li>
+      <li><b>마지막 일주일:</b> 새 카드는 끝내고 복습·기출형·자주 틀린 카드만 하세요. 실제 기출 1~2회를 80분 재고 풀어 보면 시간 감각이 생겨요. 전날은 푹 자세요. 자는 동안 기억이 굳어요.</li>
+    </ol>
+    <h2>답할 때 지킬 것</h2>
+    <p class="muted">답한 결과로 다음에 나올 날이 정해져요. 정직하게 답해야 간격이 맞아요.</p>
+    <ul>
+      <li>모르면 찍지 말고 <b>모르겠어요</b>. 찍어서 맞히면 아는 줄 알고 너무 늦게 다시 나와요.</li>
+      <li><b>이미 알아요</b>는 확실할 때만. 누른 뒤 답을 골라야 확인돼요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.</li>
+      <li>오래 고민해 맞힌 카드는 저절로 조금 일찍 다시 나와요. 서두르지 않아도 돼요.</li>
+      <li>틀리면 💡 도움말과 오답 보기 밑 작은 글씨(그 보기가 가리키는 것)까지 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
+      <li>이상한 카드는 <b>신고</b>. 관리 → 신고한 카드에 모여요.</li>
+    </ul>
+    <h2>화면 설명</h2>
+    <details><summary>홈 숫자</summary><ul>
+      <li><b>오늘 복습:</b> 다시 볼 때가 된 카드</li>
+      <li><b>새 카드:</b> 아직 안 푼 카드</li>
+      <li><b>완료:</b> 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 넓혀 가며 다시 나와요.</li>
+      <li><b>지금 기억하는 카드 %:</b> 지금 기억하고 있을 카드 비율(추정)</li>
+      <li><b>예상 점수:</b> 57~79회 기출을 지금 기억으로 풀면 몇 점쯤인지(모르는 문제는 찍는다고 본 추정). 실제 문제가 더 어려워 조금 높게 나올 수 있어요.</li>
+      <li><b>시대별 표:</b> 완료 / 학습 중 / 전체 카드 수. 누르면 그 시대만 학습해요.</li>
+    </ul></details>
+    <details><summary>시대 고르기</summary><ul>
+      <li>'시대'를 펼쳐 하나 이상 고르면 모든 버튼이 그 시대 안에서만 문제를 내요.</li>
+      <li>여러 개 고르면 그 시대들의 카드가 섞여 나와요.</li>
+      <li>앱을 다시 열면 '전체'로 돌아가요.</li>
+    </ul></details>
+    <details><summary>문제 종류</summary><ul>
+      <li><b>학습 시작:</b> 모든 종류의 카드</li>
+      <li><b>시기 맞히기:</b> 사건 → 어느 왕·정부 때</li>
+      <li><b>보기 판별:</b> 인물·제도 이름 → 옳은 설명 고르기</li>
+      <li><b>기출형 문제:</b> (가) 자료 → (가)에 대한 옳은 설명. 답한 뒤 (가)가 무엇인지 알려 줘요.</li>
+      <li><b>자주 틀린 카드:</b> 틀린 적 있고 아직 완료 안 된 카드, 많이 틀린 순</li>
+      <li><b>순서 문제·사진 고르기:</b> 연표와 문화유산 감각 연습. 복습 일정에는 반영되지 않아요.</li>
+      <li><b>핵심 노트:</b> 시대 흐름과 항목별 설명, ⚠ 헷갈리는 점, 🔑 외우는 법. '가리고 떠올리기'를 켜면 핵심어를 가려요. 항목마다 그 카드만 풀 수 있어요.</li>
+    </ul></details>
+    <details><summary>관리</summary><ul>
+      <li><b>시험일:</b> 하루 새 카드 목표 계산</li>
+      <li><b>학습 방식:</b> 보기 가리고 먼저 떠올리기</li>
+      <li><b>사진 모두 내려받기:</b> 오프라인에서도 사진이 보이게</li>
+      <li><b>Quizlet 가져오기:</b> 내 카드 추가</li>
+      <li><b>신고한 카드·완료 카드:</b> 확인하고 해제하거나 처음부터 다시 배우기</li>
+    </ul></details>
+    <details><summary>학습 기록은 어디에?</summary>
+      <p>이 휴대폰 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 관리 → 기록 백업 → 내보내기로 파일을 받아 두세요. 새 휴대폰에서는 불러오기로 이어서 할 수 있어요.</p>
+    </details>
   </section>
 
   <section id="manage" hidden>

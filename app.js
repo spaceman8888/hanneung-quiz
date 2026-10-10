@@ -48,7 +48,7 @@ const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 �
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => {
-  ['home', 'study', 'manage', 'notes'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes', 'guide'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
@@ -534,6 +534,8 @@ $('recallFirst').onchange = e => { recallFirst = e.target.checked; save('recallF
 $('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
 $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
+$('toGuide').onclick = () => { show('guide'); scrollTo(0, 0); };
+$('guideBack').onclick = goHome;
 $('back').onclick = goHome;
 window.onpopstate = () => {
   if (noteFrom) { noteFrom = false; show('study'); }
