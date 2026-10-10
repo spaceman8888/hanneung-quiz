@@ -61,10 +61,11 @@
   #notesBody summary .key { flex:1; } #notesBody summary .pct { color:var(--muted); font-size:13px; }
   #notesBody details p { margin:8px 0; }
   #notesBody .flow { font-weight:600; color:var(--accent); }
-  #notesBody table { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
-  #notesBody td, #notesBody th { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
+  #notesBody table, #guide table { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
+  #notesBody td, #notesBody th, #guide td, #guide th { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
   #guide details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:8px 0; padding:10px 12px; } #guide summary { font-weight:600; }
   #guide li { word-break:keep-all; }
+  #dayTip { width:100%; text-align:left; font-size:15px; line-height:1.5; word-break:keep-all; border-left:4px solid var(--accent); margin:4px 0 12px; }
   .hide .key:not(.shown) { color:transparent; background:var(--line); border-radius:4px; }
 </style>
 </head>
@@ -83,6 +84,7 @@
     <p id="plan" class="muted"></p>
     <p id="score" hidden></p>
     <p id="recall" class="muted"></p>
+    <button id="dayTip" aria-label="오늘의 꿀팁 — 눌러서 꿀팁 모두 보기"></button>
     <details id="eraPick"><summary id="eraSum">시대: 전체</summary><div id="eraBoxes" role="group" aria-label="시대 선택 (여러 개 가능)"></div></details>
     <p><button class="primary" id="start">학습 시작</button></p>
     <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
@@ -137,6 +139,49 @@
       <li>틀리면 💡 도움말과 오답 보기 밑 작은 글씨(그 보기가 가리키는 것)까지 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
       <li>이상한 카드는 <b>신고</b>. 관리 → 신고한 카드에 모여요.</li>
     </ul>
+    <h2 id="tipsHead">잘 외우는 꿀팁</h2>
+    <p class="muted">홈에 하루 하나씩 나와요. 눌러 보면 여기로 와요.</p>
+    <ol id="tips">
+      <li><b>읽지 말고 떠올리기.</b> 다시 읽으면 아는 느낌만 들어요. 책을 덮고 떠올린 만큼 남아요. 노트도 '가리고 떠올리기'로 보세요.</li>
+      <li><b>키워드 2~3개로 기억하기.</b> 한능검은 자료 속 키워드로 대상을 알아보는 시험이에요. 예: 광종 — 노비안검법·과거제·광덕 연호.</li>
+      <li><b>'왜?'를 붙이기.</b> 사실마다 원인과 결과를 한 문장으로 말해 보세요. 예: 균역법 — 군포 2필이 무거워 1필로 줄이고, 모자란 돈은 결작·어염세로 메웠다.</li>
+      <li><b>헷갈리는 짝은 나란히.</b> 따로 외우면 섞여요. 나란히 놓고 다른 점 하나를 찾으세요. 예: 6조 직계제(태종·세조, 왕권 강화) ↔ 의정부 서사제(세종, 재상과 협의). 노트의 ⚠ 칸이 이런 짝이에요.</li>
+      <li><b>연도는 뼈대만.</b> 가이드의 '뼈대 연표'만 외우고 나머지는 '무엇 직후, 무엇 직전'으로 붙이세요. 순서 문제가 쉬워져요.</li>
+      <li><b>순서는 앞글자로.</b> 조선 왕은 '태정태세문단세 예성연중인명선…'처럼 앞글자를 노래처럼 외우세요. 가이드의 '순서 앞글자'를 보세요.</li>
+      <li><b>사진은 시대·장소와 묶기.</b> 문화유산은 생김새 하나, 시대, 지역을 함께 기억하세요. 예: 무량수전 — 배흘림기둥·고려·영주 부석사.</li>
+      <li><b>틀린 보기의 주인도 맞히기.</b> 오답 보기가 누구 이야기인지까지 알면 한 문제로 다섯 개를 배워요. 보기 밑 작은 글씨가 그 답이에요.</li>
+      <li><b>섞어서 풀기.</b> 한 시대만 풀면 쉽게 느껴지지만 시험엔 섞여 나와요. 배운 시대들을 함께 골라 섞어 푸세요.</li>
+      <li><b>백지에 흐름 쓰기.</b> 한 시대를 마치면 빈 종이에 3분 동안 흐름을 적어 보세요. 막힌 곳이 다음에 볼 곳이에요.</li>
+      <li><b>소리 내어 설명하기.</b> 남에게 가르치듯 말해 보세요. 말이 막히는 곳이 정확히 모르는 곳이에요.</li>
+      <li><b>틀려도 손해가 아니에요.</b> 떠올리려 애쓴 뒤 정답을 보면 그냥 읽을 때보다 잘 남아요. 그래서 틀린 카드가 곧 다시 나와요.</li>
+      <li><b>자기 전 10분 복습.</b> 자는 동안 그날 외운 것이 굳어요. 밤새우기보다 자는 게 점수에 나아요.</li>
+    </ol>
+    <details><summary>뼈대 연표</summary>
+      <table>
+        <tr><th>연도</th><th>사건</th></tr>
+        <tr><td>676</td><td>신라 삼국 통일</td></tr>
+        <tr><td>698</td><td>발해 건국</td></tr>
+        <tr><td>918 · 936</td><td>고려 건국 · 후삼국 통일</td></tr>
+        <tr><td>1170</td><td>무신 정변</td></tr>
+        <tr><td>1231 · 1270</td><td>몽골 침입 시작 · 개경 환도</td></tr>
+        <tr><td>1392</td><td>조선 건국</td></tr>
+        <tr><td>1592 · 1636</td><td>임진왜란 · 병자호란</td></tr>
+        <tr><td>1876</td><td>강화도 조약</td></tr>
+        <tr><td>1894</td><td>동학 농민 운동 · 갑오개혁</td></tr>
+        <tr><td>1910</td><td>국권 피탈</td></tr>
+        <tr><td>1919</td><td>3·1 운동 · 임시 정부</td></tr>
+        <tr><td>1945 · 1948 · 1950</td><td>광복 · 정부 수립 · 6·25 전쟁</td></tr>
+        <tr><td>1960 · 1987</td><td>4·19 혁명 · 6월 민주 항쟁</td></tr>
+      </table>
+    </details>
+    <details><summary>순서 앞글자</summary><ul>
+      <li><b>조선 왕:</b> 태정태세문단세 예성연중인명선 광인효현숙경영 정순헌철고순</li>
+      <li><b>고려 초 왕:</b> 태혜정광경성목현</li>
+      <li><b>일제 통치:</b> 10년대 무단 → 20년대 문화 → 30년대 민족 말살</li>
+      <li><b>현대 정부:</b> 이승만 → 장면 내각 → 박정희 → 전두환 → 노태우 → 김영삼 → 김대중 → 노무현 → 이명박 → 박근혜 → 문재인</li>
+      <li>시대마다 큰 흐름은 핵심 노트 맨 위 화살표 줄에 있어요.</li>
+    </ul></details>
+
     <h2>화면 설명</h2>
     <details><summary>홈 숫자</summary><ul>
       <li><b>오늘 복습:</b> 다시 볼 때가 된 카드</li>

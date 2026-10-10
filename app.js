@@ -82,6 +82,8 @@ function renderHome() {
     $('score').textContent = `기출 기준 예상 점수 약 ${Math.round(e.score)}점 (추정 · 1급 80점)`
       + (e.pts >= 0.5 ? `\n점수 올리기 좋은 시대: ${e.era} +${Math.round(e.pts)}점` : '');
   }
+  const tips = $('tips').children;
+  $('dayTip').textContent = '💡 오늘의 꿀팁: ' + tips[day % tips.length].textContent;
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
@@ -536,6 +538,7 @@ $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
 $('toGuide').onclick = () => { show('guide'); scrollTo(0, 0); };
 $('guideBack').onclick = goHome;
+$('dayTip').onclick = () => { show('guide'); $('tipsHead').scrollIntoView(); };
 $('back').onclick = goHome;
 window.onpopstate = () => {
   if (noteFrom) { noteFrom = false; show('study'); }
