@@ -19,7 +19,7 @@ export function isShort(answer) {
 }
 
 // FSRS-5 memory model (github.com/open-spaced-repetition), default weights.
-// grade: 1 = wrong/모르겠어요, 3 = correct, 4 = 이미 알아요. Days are integers (dayOf).
+// grade (answerGrade): 1 = wrong/모르겠어요, 2 = right but slow, 3 = right, 4 = 이미 알아요 then right. Days are integers (dayOf).
 const W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192,
   1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
 const DECAY = -0.5, FACTOR = 19 / 81;   // recall(t = s) = 0.9, so the interval for 90% retention is s days
@@ -320,7 +320,9 @@ const GENERIC = new Set(['사용', '시작', '생활', '설치', '실시', '조�
 const words = s => s.split(/[^가-힣A-Za-z0-9]+/)
   .flatMap(t => [t, t.replace(/(에서|으로|에게|부터|까지|과|와|을|를|이|가|은|는|의|에|로|도|만|함|됨|임)$/, '')])
   .filter(t => t.length >= 2 && !GENERIC.has(t));
-export const leaks = (clue, answer) => words(clue).some(t => answer.includes(t)) || words(answer).some(t => clue.includes(t));
+const nums = s => s.match(/\d+/g) ?? [];
+export const leaks = (clue, answer) => words(clue).some(t => answer.includes(t)) || words(answer).some(t => clue.includes(t))
+  || nums(clue).some(n => nums(answer).includes(n));
 
 // 기출형: 판별 card id -> 자료 lines that point to its subject (same era) without giving its answer away.
 export function chainIndex(cards, sets = []) {
@@ -342,11 +344,11 @@ export function chainIndex(cards, sets = []) {
 }
 
 // FSRS grade of a first answer: sure ("이미 알아요") and right = Easy; right but slower than reading time allows = Hard.
-// ponytail: fixed 6 s + 50 ms per character; per-user timing if it misjudges.
+// ponytail: fixed 6 s + 150 ms per character (read every option, then decide); per-user timing if it misjudges.
 export function answerGrade(correct, { sure = false, ms = 0, chars = 0 } = {}) {
   if (!correct) return 1;
   if (sure) return 4;
-  return ms > 6000 + 50 * chars ? 2 : 3;
+  return ms > 6000 + 150 * chars ? 2 : 3;
 }
 
 const MODERN = new Set(['개항기', '대한 제국']);   // 대한 제국 (1897~) is part of 개항기

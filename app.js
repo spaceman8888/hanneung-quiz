@@ -143,15 +143,15 @@ function renderQuestion() {
   const item = session.queue[0];
   if (!item) return startBatch();
   const { card } = item;
+  showMedia(card);
   const lines = mode === 'chain' ? chainIdx.get(card.id) : null;
   $('qTag').textContent = `${card.era} · ${lines ? '기출형' : card.type}`;
   $('qClues').hidden = !lines;
   $('qClues').textContent = lines ? '(가) ' + lines[Math.floor(Math.random() * lines.length)] : '';
   $('qFront').textContent = lines ? '(가)에 대한 설명으로 옳은 것은?' : card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
-  showMedia(card);
   $('choices').className = 'choices';
   $('flag').hidden = false;
-  $('known').hidden = false;
+  $('known').hidden = session.saved.has(card.id);   // a re-asked card is already graded
   $('dunno').hidden = false;
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
   sure = false;
@@ -166,7 +166,7 @@ function renderQuestion() {
   chars = ($('qClues').textContent + $('qFront').textContent + opts.join('')).length;
   shownAt = null;
   reveal = () => { reveal = null; $('choices').replaceChildren(...buttons); shownAt = document.hidden ? null : Date.now(); };
-  if (recallFirst) $('choices').replaceChildren(btn('떠올렸으면 보기 열기', () => reveal?.(), 'primary'));
+  if (recallFirst) $('choices').replaceChildren(btn('떠올렸으면 보기 열기', () => { reveal?.(); $('choices').firstChild?.focus(); }, 'primary'));
   else reveal();
 }
 
@@ -194,7 +194,7 @@ function onAnswer(correct, button) {
   p.textContent = !correct ? `정답: ${card.back}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
   $('feedback').replaceChildren(p);
   if (mode === 'chain') $('feedback').append(el('p', `(가) ${card.front}`));
-  if (!correct && sure) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
+  if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
   if (!correct && card.tip) $('feedback').append(el('p', '💡 ' + card.tip, 'tip'));
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
   if (correct && !card.note && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
@@ -369,6 +369,8 @@ function showMedia(card) {
   img.onerror = () => { img.hidden = true; $('qImgMsg').hidden = false; $('qImgMsg').textContent = '사진을 불러오지 못했어요(오프라인). 연결되면 다시 보여요.'; };
   img.removeAttribute('src');   // otherwise the previous photo stays painted until the next one loads
   if (card.img) img.src = card.img;
+  $('qClues').hidden = true;   // only 기출형 shows 자료; renderQuestion sets it after this
+  $('qClues').textContent = '';
   $('qMap').hidden = !(card.geo && mapData);
   $('qMap').replaceChildren(...(card.geo && mapData ? [mapSvg(card.geo)] : []));
   $('qCredit').hidden = !card.credit;
@@ -418,12 +420,12 @@ function onPhotoAnswer(choice, button) {
 
 // "이미 알아요" counts only when the answer then proves it: right = Easy, wrong = Again.
 $('known').onclick = () => {
-  if (busy || !session.queue[0] || sure) return;
-  sure = true;
-  $('known').classList.add('on');
-  $('known').setAttribute('aria-pressed', 'true');
-  reveal?.();
-  $('feedback').replaceChildren(el('p', '답을 골라 확인해요. 맞히면 오래 뒤에, 틀리면 내일 다시 나와요.', 'muted'));
+  if (busy || !session.queue[0]) return;
+  sure = !sure;
+  $('known').classList.toggle('on', sure);
+  $('known').setAttribute('aria-pressed', String(sure));
+  if (sure) reveal?.();
+  $('feedback').replaceChildren(...(sure ? [el('p', '답을 골라 확인해요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.', 'muted')] : []));
 };
 document.addEventListener('visibilitychange', () => { if (document.hidden) shownAt = null; });   // time away isn't thinking time
 
@@ -558,10 +560,10 @@ try {
   const res = await fetch('gichul.json');
   const data = res.ok ? await res.json() : null;
   if (!Array.isArray(data?.questions) || !Array.isArray(data.sets)) throw 0;
-  gichul = data;
-  baseCards = L.byHits(baseCards, L.gichulHits(gichul.questions));   // new cards: most-tested first
-} catch {}
-chainIdx = L.chainIndex(allCards(), gichul?.sets);
+  baseCards = L.byHits(baseCards, L.gichulHits(data.questions));   // new cards: most-tested first
+  chainIdx = L.chainIndex(allCards(), data.sets);
+  if (data.questions.length) gichul = data;
+} catch { chainIdx = L.chainIndex(allCards()); }
 cardById = new Map(allCards().map(c => [c.id, c]));
 $('photoBtn').hidden = !allCards().some(c => c.type === '사진');
 renderHome();

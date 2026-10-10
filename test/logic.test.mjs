@@ -585,6 +585,8 @@ test('leaks: shared key word (particles stripped, both directions); generic word
   assert.ok(leaks('독도', '독도를 울릉도에 편입함'));
   assert.ok(!leaks('영고, 사출도', '전쟁 때 소의 발굽으로 길흉을 점침'));
   assert.ok(!leaks('간석기 사용 시작', '농경을 시작해 식량을 생산함'));   // 사용·시작 are generic
+  assert.ok(leaks('16품계 · 5방', '6좌평 아래 16관등을 운영함'));   // shared number
+  assert.ok(leaks('8개 유적', '8곳으로 이루어짐'));
 });
 
 test('chainIndex: 자료 from same-era 기출 clues (subject name removed) and same-era plain cards, leaks dropped', () => {
@@ -612,8 +614,8 @@ test('chainIndex: 자료 from same-era 기출 clues (subject name removed) and s
 test('answerGrade: wrong 1, sure and right 4, slow right 2, else 3', () => {
   assert.equal(answerGrade(false, { sure: true }), 1);
   assert.equal(answerGrade(true, { sure: true, ms: 1e6 }), 4);
-  assert.equal(answerGrade(true, { ms: 6000 + 50 * 100 + 1, chars: 100 }), 2);
-  assert.equal(answerGrade(true, { ms: 6000 + 50 * 100, chars: 100 }), 3);
+  assert.equal(answerGrade(true, { ms: 6000 + 150 * 100 + 1, chars: 100 }), 2);
+  assert.equal(answerGrade(true, { ms: 6000 + 150 * 100, chars: 100 }), 3);   // reading five 판별 options takes ~20 s
   assert.equal(answerGrade(true, {}), 3);   // no timing (app was hidden) → Good
 });
 
