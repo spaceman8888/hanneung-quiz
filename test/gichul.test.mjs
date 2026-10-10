@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { ERAS, chainIndex } from '../logic.js';
 
 const cards = JSON.parse(readFileSync(new URL('../cards.json', import.meta.url)));
@@ -34,4 +34,10 @@ test('gichul.json: 판별 questions also link their subject\'s 판별 cards (ord
   const judge = new Set(cards.filter(c => c.type === '판별').map(c => c.id));
   const linked = new Set(questions.flatMap(q => q.cards).filter(id => judge.has(id)));
   assert.ok(linked.size > 300, String(linked.size));
+});
+
+test('no past question points at a missing card (removing a card must hand its links to a keeper)', () => {
+  const dir = new URL('../docs/content/gichul/', import.meta.url);
+  for (const f of readdirSync(dir).filter(f => f.endsWith('.json')))
+    for (const q of JSON.parse(readFileSync(new URL(f, dir)))) for (const id of q.cards ?? []) assert.ok(ids.has(id), `${f} q${q.q}: ${id}`);
 });
