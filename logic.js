@@ -143,21 +143,31 @@ export function pickChoices(card, pool, rng = Math.random) {
   return shuffle([card.back, ...wrong], rng);
 }
 
-export function buildBatch(cards, progress, { day, era = null, type = null, ids = null, skip = new Set(), size = BATCH_SIZE }) {
+// Selected eras ([] or null = all).
+export const inEras = (c, eras) => !eras?.length || eras.includes(c.era);
+
+// Several eras: new cards from them in random turns, each era still in file order (most-tested first).
+function mixEras(cards, rng) {
+  const lists = [...new Set(cards.map(c => c.era))].map(e => cards.filter(c => c.era === e));
+  return cards.map((_, i) => { let r = rng() * (cards.length - i); return lists.find(l => (r -= l.length) < 0).shift(); });
+}
+
+export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, skip = new Set(), size = BATCH_SIZE, rng = Math.random }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
-  const pool = cards.filter(c => (!era || c.era === era) && (!type || c.type === type)
+  const pool = cards.filter(c => inEras(c, eras) && (!type || c.type === type)
     && (!ids || ids.has(c.id)) && !skip.has(c.id));
   const seen = pool.filter(c => p(c.id).s);
   const due = seen.filter(c => p(c.id).due <= day).sort(forgot);
-  const fresh = pool.filter(c => !p(c.id).s);
+  const unseen = pool.filter(c => !p(c.id).s);
+  const fresh = eras?.length > 1 ? mixEras(unseen, rng) : unseen;
   const ahead = seen.filter(c => p(c.id).due > day).sort(forgot);
   return [...due, ...fresh, ...ahead].slice(0, size);
 }
 
-export function weakBatch(cards, progress, { day, skip = new Set(), era = null, size = BATCH_SIZE }) {
+export function weakBatch(cards, progress, { day, skip = new Set(), eras = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  return cards.filter(c => (!era || c.era === era) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
+  return cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
     .sort((a, b) => p(b.id).lapses - p(a.id).lapses || recall(progress[a.id], day) - recall(progress[b.id], day))
     .slice(0, size);
 }
@@ -234,7 +244,8 @@ function pickApart(pool, n, gap, rng, taken = []) {
   return null;
 }
 
-export function makeOrderQuestion(cards, { era = null, kind = null, rng = Math.random } = {}) {
+export function makeOrderQuestion(cards, { eras = null, kind = null, rng = Math.random } = {}) {
+  const era = eras?.length ? eras[Math.floor(rng() * eras.length)] : null;   // each question stays inside one era
   const i = ERAS.indexOf(era);
   const dated = cards.filter(c => Number.isInteger(c.year) && c.type !== '판별');
   let pool = dated;
@@ -280,9 +291,9 @@ const MODERN = new Set(['개항기', '대한 제국']);   // 대한 제국 (1897
 const related = (a, b) => a.includes(b) || b.includes(a) || (MODERN.has(a) && MODERN.has(b));   // 신라 ↔ 통일 신라: both would be right
 
 // 사진 고르기: "다음 중 <period>의 문화유산은?" — one photo of that period, four from unrelated periods.
-export function makePhotoQuestion(cards, { era = null, rng = Math.random } = {}) {
+export function makePhotoQuestion(cards, { eras = null, rng = Math.random } = {}) {
   const photos = cards.filter(c => c.type === '사진');
-  const candidates = photos.filter(c => !era || c.era === era);
+  const candidates = photos.filter(c => inEras(c, eras));
   for (const period of shuffle([...new Set(candidates.map(c => c.period))], rng)) {
     const answer = shuffle(candidates.filter(c => c.period === period), rng)[0];
     const pool = photos.filter(c => !related(c.period, period));

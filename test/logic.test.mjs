@@ -206,8 +206,32 @@ test('buildBatch: due (least remembered first) -> new -> ahead; mature cards sti
 test('buildBatch: size cap, era and type filter', () => {
   const cs = [...cardsN(10), mk('j1', 'x', '조선 전기'), { ...mk('b', '세종'), type: '시기' }];
   assert.equal(buildBatch(cs, {}, { day: 0 }).length, 7);
-  assert.deepEqual(buildBatch(cs, {}, { day: 0, era: '조선 전기' }).map(c => c.id), ['j1']);
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, eras: ['조선 전기'] }).map(c => c.id), ['j1']);
   assert.deepEqual(buildBatch(cs, {}, { day: 0, type: '시기' }).map(c => c.id), ['b']);
+});
+
+test('buildBatch: several eras — only those eras, new cards mixed at random, each era keeps file order', () => {
+  const cs = [...Array.from({ length: 10 }, (_, i) => mk('g' + i, 'g' + i, '고려')),
+    ...Array.from({ length: 10 }, (_, i) => mk('j' + i, 'j' + i, '조선 전기')), mk('x', 'x', '삼국')];
+  const firsts = new Set();
+  for (let s = 1; s <= 20; s++) {
+    const ids = buildBatch(cs, {}, { day: 0, eras: ['고려', '조선 전기'], rng: seeded(s) }).map(c => c.id);
+    assert.equal(ids.length, 7);
+    assert.ok(!ids.includes('x'));
+    for (const e of ['g', 'j']) {
+      const mine = ids.filter(id => id[0] === e);
+      assert.deepEqual(mine, mine.map((_, i) => e + i), `seed ${s}`);   // 0, 1, 2… in file order
+    }
+    assert.ok(ids.some(id => id[0] === 'g') && ids.some(id => id[0] === 'j'), `seed ${s}`);
+    firsts.add(ids[0][0]);
+  }
+  assert.equal(firsts.size, 2);   // not always the same era first
+});
+
+test('weakBatch: several eras', () => {
+  const progress = { g: S(3, 0, 3, 1), j: S(3, 0, 3, 2), x: S(3, 0, 3, 5) };
+  const cs = [mk('g', 'a', '고려'), mk('j', 'b', '조선 전기'), mk('x', 'c', '삼국')];
+  assert.deepEqual(weakBatch(cs, progress, { day: 4, eras: ['고려', '조선 전기'] }).map(c => c.id), ['j', 'g']);
 });
 
 test('weakBatch: lapsed and not mature, most lapses first, skip honored', () => {
@@ -348,9 +372,25 @@ test('makeOrderQuestion: null when not enough dated cards; era filter uses adjac
   assert.equal(makeOrderQuestion(dated.slice(0, 2), { kind: 'between' }), null);
   const mixed = [...dated, ev('s1', '삼국사건', 500, '삼국'), ev('j1', '조선후기사건', 1750, '조선 후기')];
   for (let s = 1; s <= 20; s++) {
-    const q = makeOrderQuestion(mixed, { era: '고려', kind: 'first', rng: seeded(s) });
+    const q = makeOrderQuestion(mixed, { eras: ['고려'], kind: 'first', rng: seeded(s) });
     assert.ok(q.options.every(o => o.era === '고려'));
   }
+});
+
+test('makeOrderQuestion: several eras — each question from one of them', () => {
+  const two = [
+    ...Array.from({ length: 30 }, (_, i) => ev('g' + i, '고려사건' + i, 918 + i * 10, '고려')),
+    ...Array.from({ length: 30 }, (_, i) => ev('h' + i, '후기사건' + i, 1600 + i * 10, '조선 후기')),
+    ...Array.from({ length: 30 }, (_, i) => ev('k' + i, '일제사건' + i, 1910 + i, '일제강점기')),
+  ];
+  const got = new Set();
+  for (let s = 1; s <= 30; s++) {
+    const q = makeOrderQuestion(two, { eras: ['고려', '일제강점기'], kind: 'first', rng: seeded(s) });
+    const e = new Set(q.options.map(c => c.era));
+    assert.equal(e.size, 1, `seed ${s}`);
+    got.add([...e][0]);
+  }
+  assert.deepEqual([...got].sort(), ['고려', '일제강점기']);
 });
 
 test('pickChoices 판별: never another fact of the same subject; same group first; isolated from other types', () => {
@@ -459,7 +499,15 @@ test('makePhotoQuestion: one answer of the period, 4 others from unrelated perio
 test('makePhotoQuestion: era filter limits the answer, not the distractors', () => {
   const pool = [ph('a', '석가탑', '통일 신라', '탑', '통일신라·발해'), ph('c', '월정사 탑', '고려'), ph('d', '정림사 탑', '백제', '탑', '삼국'),
     ph('e', '미륵사 탑', '백제', '탑', '삼국'), ph('f', '경천사 탑', '고려'), ph('g', '원각사 탑', '조선 전기', '탑', '조선 전기')];
-  for (let s = 1; s <= 20; s++) assert.equal(makePhotoQuestion(pool, { era: '통일신라·발해', rng: seeded(s) }).answer.id, 'a');
+  for (let s = 1; s <= 20; s++) assert.equal(makePhotoQuestion(pool, { eras: ['통일신라·발해'], rng: seeded(s) }).answer.id, 'a');
+});
+
+test('makePhotoQuestion: several eras — answer from any of them', () => {
+  const pool = [ph('a', '석가탑', '통일 신라', '탑', '통일신라·발해'), ph('c', '월정사 탑', '고려'), ph('d', '정림사 탑', '백제', '탑', '삼국'),
+    ph('e', '미륵사 탑', '백제', '탑', '삼국'), ph('f', '경천사 탑', '고려'), ph('g', '원각사 탑', '조선 전기', '탑', '조선 전기')];
+  const got = new Set();
+  for (let s = 1; s <= 30; s++) got.add(makePhotoQuestion(pool, { eras: ['통일신라·발해', '조선 전기'], rng: seeded(s) }).answer.id);
+  assert.deepEqual([...got].sort(), ['a', 'g']);
 });
 
 test('project: corners and Seoul land inside the map', () => {

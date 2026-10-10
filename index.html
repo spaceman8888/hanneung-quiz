@@ -29,6 +29,9 @@
   .photoGrid small.credit { font-size:11px; }
   #feedback button { margin:4px 8px 4px 0; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
+  #eraPick { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:10px 12px; }
+  #eraBoxes { display:grid; grid-template-columns:1fr 1fr; gap:0 8px; margin-top:6px; }
+  #eraBoxes label { display:flex; gap:8px; align-items:center; padding:8px 0; } #eraBoxes input { width:auto; margin:0; }
   .eraRow { display:flex; justify-content:space-between; width:100%; margin:6px 0; text-align:left; }
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   textarea { height:140px; }
@@ -73,7 +76,7 @@
     </div>
     <p id="plan" class="muted"></p>
     <p id="recall" class="muted"></p>
-    <select id="eraSelect" aria-label="시대 선택"></select>
+    <details id="eraPick"><summary id="eraSum">시대: 전체</summary><div id="eraBoxes" role="group" aria-label="시대 선택 (여러 개 가능)"></div></details>
     <p><button class="primary" id="start">학습 시작</button></p>
     <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
     <div class="row"><button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button><button id="notesBtn" hidden>핵심 노트</button></div>

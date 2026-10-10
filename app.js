@@ -53,15 +53,18 @@ const todayCount = () => (stats.date === L.today() ? stats.count : 0);
 const todayFresh = () => (stats.date === L.today() ? stats.fresh ?? 0 : 0);
 const examDay = () => (exam ? L.dayOf(new Date(exam + 'T00:00')) : null);
 
-function fillEras(sel, withAll) {
-  sel.replaceChildren(...(withAll ? [new Option('전체 시대', '')] : []), ...L.ERAS.map(e => new Option(e, e)));
-}
+// Home era filter: checkboxes, '' = 전체 (checked when no era is).
+const eraBoxes = () => [...$('eraBoxes').querySelectorAll('input')];
+const selEras = () => eraBoxes().filter(b => b.checked && b.value).map(b => b.value);
+const setEras = list => eraBoxes().forEach(b => { b.checked = b.value ? list.includes(b.value) : !list.length; });
+const eraNote = () => { const e = selEras(); return !e.length ? '' : ' · ' + (e.length > 2 ? `시대 ${e.length}개` : e.join(', ')); };
 
 function renderHome() {
   cancelTimer();
-  const era = $('eraSelect').value;
+  const eras = selEras();
+  $('eraSum').textContent = '시대: ' + (eras.join(', ') || '전체');
   const day = L.dayOf();
-  const inEra = allCards().filter(c => !era || c.era === era);
+  const inEra = allCards().filter(c => L.inEras(c, eras));
   const n = L.counts(inEra, progress, day);
   const pn = L.counts(inEra.filter(c => c.type === '시기'), progress, day);
   $('periodBtn').textContent = `시기 맞히기 (${pn.due + pn.fresh})`;
@@ -81,7 +84,7 @@ function renderHome() {
     const inEra = allCards().filter(c => c.era === e);
     if (!inEra.length) return null;
     const k = L.counts(inEra, progress, day);
-    const b = btn('', () => { $('eraSelect').value = e; enterMode('normal'); }, 'eraRow');
+    const b = btn('', () => { setEras([e]); enterMode('normal'); }, 'eraRow');
     const name = document.createElement('span'), count = document.createElement('span');
     name.textContent = e;
     count.textContent = `${k.done} / ${k.learning} / ${inEra.length}`;
@@ -104,11 +107,11 @@ function startBatch() {
   cancelTimer();
   if (mode === 'order') return renderOrder();
   if (mode === 'photo') return renderPhoto();
-  const era = $('eraSelect').value || null;
+  const eras = selEras();
   const day = L.dayOf();
-  const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, era })
+  const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, eras })
     : mode === 'note' ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
-    : L.buildBatch(allCards(), progress, { day, era, type: MODE_TYPE[mode] ?? null });
+    : L.buildBatch(allCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null });
   if (!batch.length) {
     $('homeMsg').textContent = (mode === 'weak' || mode === 'note') && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
     return goHome();
@@ -123,8 +126,7 @@ function startBatch() {
 function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
-  const era = $('eraSelect').value;
-  $('progressText').textContent = `${MODE_LABEL[mode]}${era && mode !== 'note' ? ' · ' + era : ''} · ${doneCount}장 풀이`;
+  $('progressText').textContent = `${MODE_LABEL[mode]}${mode !== 'note' ? eraNote() : ''} · ${doneCount}장 풀이`;
   const item = session.queue[0];
   if (!item) return startBatch();
   const { card } = item;
@@ -261,11 +263,11 @@ const fmtYear = y => (y < 0 ? `기원전 ${-y}년` : `${y}년`);
 function renderOrder() {
   busy = false;
   $('feedback').replaceChildren();
-  const era = $('eraSelect').value || null;
-  orderQ = L.makeOrderQuestion(allCards(), { era }) ?? L.makeOrderQuestion(allCards(), { era, kind: 'first' });
+  const eras = selEras();
+  orderQ = L.makeOrderQuestion(allCards(), { eras }) ?? L.makeOrderQuestion(allCards(), { eras, kind: 'first' });
   if (!orderQ) { $('homeMsg').textContent = '연도 정보가 있는 카드가 부족해요.'; return goHome(); }
   show('study');
-  $('progressText').textContent = `${MODE_LABEL.order}${era ? ' · ' + era : ''} · ${doneCount}문제 풀이`;
+  $('progressText').textContent = `${MODE_LABEL.order}${eraNote()} · ${doneCount}문제 풀이`;
   $('qTag').textContent = orderQ.kind === 'first' ? '순서' : '시기 사이';
   showMedia({});
   $('choices').className = 'choices';
@@ -347,8 +349,7 @@ let photoQ = null;
 function renderPhoto() {
   busy = false;
   $('feedback').replaceChildren();
-  const era = $('eraSelect').value || null;
-  photoQ = L.makePhotoQuestion(allCards(), { era }) ?? L.makePhotoQuestion(allCards());
+  photoQ = L.makePhotoQuestion(allCards(), { eras: selEras() }) ?? L.makePhotoQuestion(allCards());
   if (!photoQ) { $('homeMsg').textContent = '사진 카드가 부족해요.'; return goHome(); }
   show('study');
   showMedia({});
@@ -467,10 +468,18 @@ $('backupFile').onchange = async e => {
   $('backupMsg').textContent = '불러오기 완료';
 };
 
-fillEras($('eraSelect'), true);
-fillEras($('importEra'), false);
+$('eraBoxes').replaceChildren(...['', ...L.ERAS].map(e => {
+  const b = el('input');
+  b.type = 'checkbox';
+  b.value = e;
+  b.checked = !e;
+  const l = el('label');
+  l.append(b, e || '전체');
+  return l;
+}));
+$('eraBoxes').onchange = e => { setEras(e.target.value ? selEras() : []); $('homeMsg').textContent = ''; renderHome(); };
+$('importEra').replaceChildren(...L.ERAS.map(e => new Option(e, e)));
 $('importEra').value = '기타';
-$('eraSelect').onchange = () => { $('homeMsg').textContent = ''; renderHome(); };
 $('periodBtn').onclick = () => enterMode('period');
 $('judgeBtn').onclick = () => enterMode('judge');
 $('orderBtn').onclick = () => enterMode('order');
