@@ -228,15 +228,12 @@
   "subject": "광군",
   "subjectType": "제도",
   "answerFact": "정종이 거란 대비 광군 조직",
-  "clues": [
-   "양규",
-   "귀주",
-   "강감찬"
-  ],
+  "clues": [],
   "cards": [
    "c0779",
    "c0004"
-  ]
+  ],
+  "vague": true
  },
  {
   "q": 15,
