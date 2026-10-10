@@ -287,6 +287,68 @@ export function itemRecall(item, progress, day) {
   return item.cards.reduce((s, id) => s + recall(progress[id], day), 0) / item.cards.length;
 }
 
+// 기출 (gichul.json): past questions -> linked cards.
+export function gichulHits(questions) {
+  const hits = new Map();
+  for (const q of questions) for (const id of q.cards) hits.set(id, (hits.get(id) ?? 0) + 1);
+  return hits;
+}
+
+// New cards in order of how often past exams used them; Array.sort is stable, so ties keep file order.
+export const byHits = (cards, hits) => [...cards].sort((a, b) => (hits.get(b.id) ?? 0) - (hits.get(a.id) ?? 0));
+
+// Past questions answered with the mean recall of their cards, otherwise a 1-in-5 guess.
+// era/pts: where the most points are still missed. ponytail: card recall stands in for the question, real ones are harder.
+export function examScore(questions, progress, day) {
+  const miss = {};
+  let total = 0;
+  for (const q of questions) {
+    const r = q.cards.reduce((s, id) => s + recall(progress[id], day), 0) / q.cards.length;
+    const m = (1 - r) * (1 - 1 / CHOICES) * 100 / questions.length;
+    miss[q.era] = (miss[q.era] ?? 0) + m;
+    total += m;
+  }
+  const [era, pts] = Object.entries(miss).sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  return { score: 100 - total, era, pts };
+}
+
+// Does a 자료 line give the answer away? Shared key word, particles stripped; generic words don't count.
+const GENERIC = new Set(['사용', '시작', '생활', '설치', '실시', '조직', '제정', '건립', '출토', '발생', '등장', '이후', '처음', '정비',
+  '편찬', '간행', '주장', '전개', '추진', '창설', '설립', '건국', '시행', '반대', '지원', '확대', '강화', '중심', '통해', '위해', '대한',
+  '이름', '당시', '최초', '전국', '지역', '나라', '국가', '정부', '세력', '사람', '활동', '운동', '사건', '제도', '시대', '시기',
+  '조선', '고려', '신라', '백제', '고구려', '일본', '중국', '우리', '독립', '민족', '중앙', '지방', '여러', '모든']);
+const words = s => s.split(/[^가-힣A-Za-z0-9]+/)
+  .flatMap(t => [t, t.replace(/(에서|으로|에게|부터|까지|과|와|을|를|이|가|은|는|의|에|로|도|만|함|됨|임)$/, '')])
+  .filter(t => t.length >= 2 && !GENERIC.has(t));
+export const leaks = (clue, answer) => words(clue).some(t => answer.includes(t)) || words(answer).some(t => clue.includes(t));
+
+// 기출형: 판별 card id -> 자료 lines that point to its subject (same era) without giving its answer away.
+export function chainIndex(cards, sets = []) {
+  const key = (era, name) => era + '|' + name;
+  const lines = new Map();
+  const add = (k, line) => lines.set(k, [...(lines.get(k) ?? []), line]);
+  for (const s of sets) {
+    const clues = s.clues.filter(k => !k.includes(s.subject) && !s.subject.includes(k));
+    if (clues.length >= 2) add(key(s.era, s.subject), clues.join(' · '));
+  }
+  for (const c of cards) if (!choiceClass(c)) add(key(c.era, c.back), c.front);
+  const idx = new Map();
+  for (const c of cards) {
+    if (c.type !== '판별') continue;
+    const ok = [...new Set(lines.get(key(c.era, c.front)) ?? [])].filter(l => !leaks(l, c.back));
+    if (ok.length) idx.set(c.id, ok);
+  }
+  return idx;
+}
+
+// FSRS grade of a first answer: sure ("이미 알아요") and right = Easy; right but slower than reading time allows = Hard.
+// ponytail: fixed 6 s + 50 ms per character; per-user timing if it misjudges.
+export function answerGrade(correct, { sure = false, ms = 0, chars = 0 } = {}) {
+  if (!correct) return 1;
+  if (sure) return 4;
+  return ms > 6000 + 50 * chars ? 2 : 3;
+}
+
 const MODERN = new Set(['개항기', '대한 제국']);   // 대한 제국 (1897~) is part of 개항기
 const related = (a, b) => a.includes(b) || b.includes(a) || (MODERN.has(a) && MODERN.has(b));   // 신라 ↔ 통일 신라: both would be right
 

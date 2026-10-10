@@ -5,7 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean' };
+const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean' };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -33,15 +33,18 @@ let progress = L.migrate(load('progress', {}), L.dayOf());
 let stats = load('stats', { date: '', count: 0, fresh: 0 });
 let exam = load('exam', '');
 let hideKeys = load('hideKeys', false);
+let recallFirst = load('recallFirst', false);
+let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
+let sure = false, shownAt = null, chars = 0, reveal = null;   // current question: "이미 알아요" pressed, when options showed
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
-const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드', photo: '사진 고르기' };
+const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드', photo: '사진 고르기', chain: '기출형' };
 const MODE_TYPE = { period: '시기', judge: '판별' };
-const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.' };
+const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.', chain: '기출형으로 낼 카드가 없어요.' };
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => {
@@ -70,6 +73,15 @@ function renderHome() {
   $('periodBtn').textContent = `시기 맞히기 (${pn.due + pn.fresh})`;
   const jn = L.counts(inEra.filter(c => c.type === '판별'), progress, day);
   $('judgeBtn').textContent = `보기 판별 (${jn.due + jn.fresh})`;
+  const cn = L.counts(inEra.filter(c => chainIdx.has(c.id)), progress, day);
+  $('chainBtn').textContent = `기출형 문제 (${cn.due + cn.fresh})`;
+  $('chainBtn').hidden = !chainIdx.size;
+  $('score').hidden = !gichul;
+  if (gichul) {
+    const e = L.examScore(gichul.questions, progress, day);
+    $('score').textContent = `기출 기준 예상 점수 약 ${Math.round(e.score)}점 (추정 · 1급 80점)`
+      + (e.pts >= 0.5 ? `\n점수 올리기 좋은 시대: ${e.era} +${Math.round(e.pts)}점` : '');
+  }
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
@@ -111,6 +123,7 @@ function startBatch() {
   const day = L.dayOf();
   const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, eras })
     : mode === 'note' ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
+    : mode === 'chain' ? L.buildBatch(allCards(), progress, { day, eras, ids: chainIdx })   // a Map has .has()
     : L.buildBatch(allCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null });
   if (!batch.length) {
     $('homeMsg').textContent = (mode === 'weak' || mode === 'note') && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
@@ -130,19 +143,31 @@ function renderQuestion() {
   const item = session.queue[0];
   if (!item) return startBatch();
   const { card } = item;
-  $('qTag').textContent = `${card.era} · ${card.type}`;
-  $('qFront').textContent = card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
+  const lines = mode === 'chain' ? chainIdx.get(card.id) : null;
+  $('qTag').textContent = `${card.era} · ${lines ? '기출형' : card.type}`;
+  $('qClues').hidden = !lines;
+  $('qClues').textContent = lines ? '(가) ' + lines[Math.floor(Math.random() * lines.length)] : '';
+  $('qFront').textContent = lines ? '(가)에 대한 설명으로 옳은 것은?' : card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
   showMedia(card);
   $('choices').className = 'choices';
   $('flag').hidden = false;
   $('known').hidden = false;
   $('dunno').hidden = false;
   $('flag').textContent = progress[card.id]?.flagged ? '신고 취소' : '신고';
-  $('choices').replaceChildren(...L.pickChoices(card, allCards()).map(choice => {
+  sure = false;
+  $('known').classList.remove('on');
+  $('known').setAttribute('aria-pressed', 'false');
+  const opts = L.pickChoices(card, allCards());
+  const buttons = opts.map(choice => {
     const b = btn(choice, () => onAnswer(choice === card.back, b));
     b.dataset.choice = choice;
     return b;
-  }));
+  });
+  chars = ($('qClues').textContent + $('qFront').textContent + opts.join('')).length;
+  shownAt = null;
+  reveal = () => { reveal = null; $('choices').replaceChildren(...buttons); shownAt = document.hidden ? null : Date.now(); };
+  if (recallFirst) $('choices').replaceChildren(btn('떠올렸으면 보기 열기', () => reveal?.(), 'primary'));
+  else reveal();
 }
 
 function onAnswer(correct, button) {
@@ -150,10 +175,13 @@ function onAnswer(correct, button) {
   busy = true;
   const { card } = session.queue[0];
   const id = card.id;
+  let g = null;
   if (!session.saved.has(id)) {
-    grade(card, correct ? 3 : 1);
+    g = L.answerGrade(correct, { sure, ms: shownAt ? Date.now() - shownAt : 0, chars });
+    grade(card, g);
     session.saved.add(id);
   }
+  reveal?.();   // 모르겠어요 before opening the options: still show them, marked
   if (correct) { bumpStats(); doneCount++; }
   button?.classList.add(correct ? 'ok' : 'bad');
   for (const b of $('choices').children) {
@@ -163,11 +191,13 @@ function onAnswer(correct, button) {
   }
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
-  p.textContent = correct ? '정답!' : `정답: ${card.back}`;
+  p.textContent = !correct ? `정답: ${card.back}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
   $('feedback').replaceChildren(p);
+  if (mode === 'chain') $('feedback').append(el('p', `(가) ${card.front}`));
+  if (!correct && sure) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
   if (!correct && card.tip) $('feedback').append(el('p', '💡 ' + card.tip, 'tip'));
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
-  if (correct && !card.note) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, 500); return; }
+  if (correct && !card.note && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
   if (correct) return;
   const item = noteIdx.get(card.id);
@@ -386,13 +416,16 @@ function onPhotoAnswer(choice, button) {
   $('feedback').replaceChildren(el('p', ok ? '정답!' : '오답', ok ? 'ok' : 'bad'), btn('다음', () => { doneCount++; renderPhoto(); }, 'primary'));
 }
 
+// "이미 알아요" counts only when the answer then proves it: right = Easy, wrong = Again.
 $('known').onclick = () => {
-  if (busy || !session.queue[0]) return;
-  const { card } = session.queue.shift();
-  grade(card, 4);
-  doneCount++;
-  renderQuestion();
+  if (busy || !session.queue[0] || sure) return;
+  sure = true;
+  $('known').classList.add('on');
+  $('known').setAttribute('aria-pressed', 'true');
+  reveal?.();
+  $('feedback').replaceChildren(el('p', '답을 골라 확인해요. 맞히면 오래 뒤에, 틀리면 내일 다시 나와요.', 'muted'));
 };
+document.addEventListener('visibilitychange', () => { if (document.hidden) shownAt = null; });   // time away isn't thinking time
 
 $('flag').onclick = () => {
   const id = session.queue[0].card.id;
@@ -420,6 +453,7 @@ function renderManage() {
   const shown = done.filter(c => c.front.includes(q) || c.back.includes(q));
   $('doneList').replaceChildren(...cardList(shown, '처음부터', c => { progress[c.id] = { flagged: !!progress[c.id]?.flagged }; }));
   $('examDate').value = exam;
+  $('recallFirst').checked = recallFirst;
   show('manage');
 }
 
@@ -493,6 +527,8 @@ $('dlPhotos').onclick = async () => {
 };
 $('start').onclick = () => enterMode('normal');
 $('weakBtn').onclick = () => enterMode('weak');
+$('chainBtn').onclick = () => enterMode('chain');
+$('recallFirst').onchange = e => { recallFirst = e.target.checked; save('recallFirst', recallFirst); };
 $('examDate').onchange = e => { exam = e.target.value; save('exam', exam); };
 $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
@@ -518,6 +554,14 @@ try {
   if (!Array.isArray(data)) throw 0;
   baseCards = data;
 } catch { warn('기본 카드를 불러오지 못했습니다.'); }
+try {
+  const res = await fetch('gichul.json');
+  const data = res.ok ? await res.json() : null;
+  if (!Array.isArray(data?.questions) || !Array.isArray(data.sets)) throw 0;
+  gichul = data;
+  baseCards = L.byHits(baseCards, L.gichulHits(gichul.questions));   // new cards: most-tested first
+} catch {}
+chainIdx = L.chainIndex(allCards(), gichul?.sets);
 cardById = new Map(allCards().map(c => [c.id, c]));
 $('photoBtn').hidden = !allCards().some(c => c.type === '사진');
 renderHome();

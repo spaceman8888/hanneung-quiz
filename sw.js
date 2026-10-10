@@ -1,7 +1,7 @@
 importScripts('version.js');
 const CACHE = self.APP_VERSION;
 const IMG = 'img-1';   // bump when any photo file changes; it is kept across app updates otherwise
-const FILES = ['./', 'index.html', 'version.js', 'app.js', 'logic.js', 'cards.json', 'notes.json', 'map.json', 'manifest.json', 'icon-192.png', 'icon-512.png'];
+const FILES = ['./', 'index.html', 'version.js', 'app.js', 'logic.js', 'cards.json', 'notes.json', 'map.json', 'gichul.json', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))));

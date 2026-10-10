@@ -35,6 +35,10 @@
   .eraRow { display:flex; justify-content:space-between; width:100%; margin:6px 0; text-align:left; }
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   textarea { height:140px; }
+  input[type=checkbox] { width:auto; }
+  #score { font-weight:600; margin:4px 0; white-space:pre-line; }
+  #qClues { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:0 0 12px; font-size:17px; line-height:1.5; word-break:keep-all; }
+  #known.on { color:var(--accent); border-color:var(--accent); }
   .row { display:flex; gap:8px; margin:8px 0; } .row > * { flex:1; }
   ul { padding-left:20px; } li { margin:6px 0; }
   [hidden] { display:none !important; }
@@ -75,12 +79,13 @@
       <div><b id="todayCount">0</b>오늘 푼 카드</div>
     </div>
     <p id="plan" class="muted"></p>
+    <p id="score" hidden></p>
     <p id="recall" class="muted"></p>
     <details id="eraPick"><summary id="eraSum">시대: 전체</summary><div id="eraBoxes" role="group" aria-label="시대 선택 (여러 개 가능)"></div></details>
     <p><button class="primary" id="start">학습 시작</button></p>
     <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
     <div class="row"><button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button><button id="notesBtn" hidden>핵심 노트</button></div>
-    <div class="row"><button id="weakBtn">자주 틀린 카드</button></div>
+    <div class="row"><button id="chainBtn" hidden>기출형 문제</button><button id="weakBtn">자주 틀린 카드</button></div>
     <p id="homeMsg" class="muted"></p>
     <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습<br>완료 = 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 점점 넓혀 다시 나옵니다.</p>
     <div id="eraTable"></div>
@@ -93,6 +98,7 @@
       <img id="qImg" hidden alt="문제 사진">
       <p id="qImgMsg" class="muted" hidden></p>
       <div id="qMap" hidden></div>
+      <p id="qClues" hidden></p>
       <div class="front" id="qFront"></div>
       <p id="qCredit" class="tag" hidden></p>
     </div>
@@ -112,6 +118,9 @@
     <h2>시험일</h2>
     <input type="date" id="examDate" aria-label="시험일">
     <p class="muted">시험 일주일 전까지 모든 카드를 한 번씩 배우도록 하루 새 카드 목표를 계산합니다.</p>
+    <h2>학습 방식</h2>
+    <label><input type="checkbox" id="recallFirst"> 보기 가리고 먼저 떠올리기</label>
+    <p class="muted">답을 머릿속으로 먼저 떠올린 뒤 보기를 열어요. 보기에서 고르기보다 오래 기억됩니다. 버튼을 한 번 더 눌러야 해요.</p>
     <h2>사진</h2>
     <button id="dlPhotos">사진 모두 내려받기</button>
     <p id="dlMsg" class="muted">처음 볼 때 저장되지만, 오프라인에서 공부하려면 미리 받아 두세요.</p>

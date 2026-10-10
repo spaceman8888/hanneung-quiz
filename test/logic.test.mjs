@@ -5,7 +5,8 @@ import { today, normalize, isShort, ERAS,
   entry, review, recall, migrate, dayOf, dailyNew, MATURE, noteIndex, itemRecall,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
-  loadJSON, validateBackup, isStats } from '../logic.js';
+  loadJSON, validateBackup, isStats,
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -557,4 +558,67 @@ test('pickChoices 사진: cards asking the same question come first (tomb murals
   for (let s = 1; s <= 20; s++) {
     assert.deepEqual([...pickChoices(pool[0], pool, seeded(s))].sort(), ['각저총', '강서대묘', '무용총', '쌍영총', '안악 3호분']);
   }
+});
+
+test('gichulHits counts past questions per card; byHits puts most-tested first, ties keep file order', () => {
+  const hits = gichulHits([{ era: '고려', cards: ['b', 'c'] }, { era: '고려', cards: ['c'] }]);
+  assert.deepEqual([...hits].sort(), [['b', 1], ['c', 2]]);
+  const cs = ['a', 'b', 'c', 'd'].map(id => mk(id, id));
+  assert.deepEqual(byHits(cs, hits).map(c => c.id), ['c', 'b', 'a', 'd']);
+});
+
+test('examScore: guessing only = 20, everything remembered = 100, era with most points to gain', () => {
+  const qs = [{ era: '고려', cards: ['a', 'b'] }, { era: '고려', cards: ['b'] }, { era: '현대', cards: ['c'] }];
+  const none = examScore(qs, {}, 10);
+  assert.equal(Math.round(none.score), 20);
+  assert.equal(none.era, '고려');
+  assert.equal(Math.round(none.pts), Math.round(80 * 2 / 3));
+  const all = { a: S(1e9, 0, 1e9), b: S(1e9, 0, 1e9), c: S(1e9, 0, 1e9) };
+  assert.equal(Math.round(examScore(qs, all, 10).score), 100);
+  const onlyC = examScore(qs, { c: S(1e9, 0, 1e9) }, 10);
+  assert.equal(onlyC.era, '고려');
+  assert.equal(Math.round(onlyC.score), Math.round(20 + 80 / 3));
+});
+
+test('leaks: shared key word (particles stripped, both directions); generic words do not count', () => {
+  assert.ok(leaks('벼농사 시작, 고인돌 축조', '많은 인력을 동원해 고인돌을 축조함'));
+  assert.ok(leaks('독도', '독도를 울릉도에 편입함'));
+  assert.ok(!leaks('영고, 사출도', '전쟁 때 소의 발굽으로 길흉을 점침'));
+  assert.ok(!leaks('간석기 사용 시작', '농경을 시작해 식량을 생산함'));   // 사용·시작 are generic
+});
+
+test('chainIndex: 자료 from same-era 기출 clues (subject name removed) and same-era plain cards, leaks dropped', () => {
+  const j = (id, front, back, era = '조선 후기') => ({ id, front, back, era, type: '판별', group: 'g' });
+  const cs = [
+    j('j1', '정조', '『대전통편』을 편찬함'),
+    j('j2', '정조', '규장각을 설치함'),
+    j('j3', '중추원', '군사 기밀과 왕명 출납을 맡음', '고려'),
+    { id: 'p1', front: '규장각 설치, 장용영 창설, 수원 화성 축조', back: '정조', era: '조선 후기', type: '인물' },
+    { id: 'p2', front: '독립 협회가 의회로 개편하려 한 기구', back: '중추원', era: '개항기', type: '제도' },
+    { id: 't1', front: '신해통공 — 어느 왕 때?', back: '정조', era: '조선 후기', type: '시기' },
+  ];
+  const sets = [
+    { era: '조선 후기', subject: '정조', clues: ['화성 행차', '정조 어필', '현륭원'] },
+    { era: '조선 후기', subject: '정조', clues: ['정조', '현륭원'] },   // 1 clue left after removing the name → unused
+    { era: '고려', subject: '정조', clues: ['다른', '시대'] },
+  ];
+  const idx = chainIndex(cs, sets);
+  assert.deepEqual(idx.get('j1'), ['화성 행차 · 현륭원', '규장각 설치, 장용영 창설, 수원 화성 축조']);
+  assert.deepEqual(idx.get('j2'), ['화성 행차 · 현륭원']);   // the plain card gives 규장각 away
+  assert.ok(!idx.has('j3'));   // 개항기 중추원 is a different institution
+  assert.ok(!idx.has('p1') && !idx.has('t1'));
+});
+
+test('answerGrade: wrong 1, sure and right 4, slow right 2, else 3', () => {
+  assert.equal(answerGrade(false, { sure: true }), 1);
+  assert.equal(answerGrade(true, { sure: true, ms: 1e6 }), 4);
+  assert.equal(answerGrade(true, { ms: 6000 + 50 * 100 + 1, chars: 100 }), 2);
+  assert.equal(answerGrade(true, { ms: 6000 + 50 * 100, chars: 100 }), 3);
+  assert.equal(answerGrade(true, {}), 3);   // no timing (app was hidden) → Good
+});
+
+test('review: Hard grows stability less than Good', () => {
+  assert.equal(review(undefined, 2, 0).due, 1);
+  const p = review(undefined, 3, 0);
+  assert.ok(review(p, 2, 3).s < review(p, 3, 3).s);
 });
