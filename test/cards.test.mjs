@@ -137,3 +137,9 @@ test('memo (외우는 법), when present, is one line ≤ 70 chars, not the tip 
     && !c.memo.includes('\n') && c.memo !== c.tip && c.tip && !c.memo.startsWith('🔑'))).map(c => c.id);
   assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards with a bad memo`);
 });
+
+test('assoc (연상), when present, is one line ≤ 70 chars, not the memo or tip again, and only on cards with a tip', () => {
+  const bad = cards.filter(c => 'assoc' in c && !(typeof c.assoc === 'string' && c.assoc.trim() && c.assoc.length <= 70
+    && !c.assoc.includes('\n') && c.assoc !== c.tip && c.assoc !== c.memo && c.tip && !c.assoc.startsWith('🧠'))).map(c => c.id);
+  assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards with a bad assoc`);
+});

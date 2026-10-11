@@ -6,7 +6,7 @@ import { today, normalize, isShort, ERAS,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -269,6 +269,8 @@ test('validateBackup: v2 and v1 backups', () => {
   assert.ok(!validateBackup('x'));
   assert.ok(!validateBackup({}));
   assert.ok(!validateBackup({ progress: [] }));
+  assert.ok(validateBackup({ progress: {}, myNotes: { c1: '내 메모' } }));
+  assert.ok(!validateBackup({ progress: {}, myNotes: ['x'] }));
   assert.ok(!validateBackup({ progress: {}, customCards: {} }));
   assert.ok(!validateBackup({ progress: {}, stats: { date: '', count: 1.5 } }));
 });
@@ -663,4 +665,19 @@ test('missLines: missed in review twice or more → a nudge first', () => {
   const ls = missLines(k, { lapses: 3 });
   assert.equal(ls[0].k, 'again');
   assert.match(ls[0].text, /3번/);
+});
+
+test('missLines: my own note comes right after the nudge, before the app\'s lines', () => {
+  const k = { id: 'k', type: '인물', era: '고려', front: 'f', back: 'b', tip: 't', memo: 'm' };
+  const ls = missLines(k, { lapses: 2, mine: '근육왕' });
+  assert.deepEqual(ls.map(l => l.k), ['again', 'mine', 'memo', 'tip']);
+  assert.equal(ls[1].text, '✏️ 근육왕');
+  assert.deepEqual(missLines(k).map(l => l.k), ['memo', 'tip']);
+});
+
+test('setMyNote: trims, blank deletes, input untouched', () => {
+  const a = { c1: 'x' };
+  assert.deepEqual(setMyNote(a, 'c2', '  근육왕 \n'), { c1: 'x', c2: '근육왕' });
+  assert.deepEqual(setMyNote(a, 'c1', '   '), {});
+  assert.deepEqual(a, { c1: 'x' });
 });

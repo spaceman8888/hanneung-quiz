@@ -26,7 +26,8 @@
   .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
   #feedback p { font-size:19px; font-weight:600; } #feedback p.muted { font-size:15px; font-weight:400; }
   #feedback p.tip { font-size:16px; font-weight:400; line-height:1.55; background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:10px 12px; word-break:keep-all; }
-  #feedback p.tip.memo { font-weight:600; } #feedback p.tip.again { border-left-color:var(--bad); color:var(--bad); font-weight:600; }
+  #feedback p.tip.memo { font-weight:600; } #feedback p.tip.mine { border-left-color:var(--ok); } #feedback p.tip.assoc { border-left-style:dashed; }
+  .myNote textarea { height:90px; margin:6px 0; } #feedback p.tip.again { border-left-color:var(--bad); color:var(--bad); font-weight:600; }
   .photoGrid small.credit { font-size:11px; }
   #feedback button { margin:4px 8px 4px 0; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
@@ -137,7 +138,9 @@
       <li>모르면 찍지 말고 <b>모르겠어요</b>. 찍어서 맞히면 아는 줄 알고 너무 늦게 다시 나와요.</li>
       <li><b>이미 알아요</b>는 확실할 때만. 누른 뒤 답을 골라야 확인돼요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.</li>
       <li>오래 고민해 맞힌 카드는 저절로 조금 일찍 다시 나와요. 서두르지 않아도 돼요.</li>
-      <li>틀리면 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
+      <li>틀리면 ✏️ 내 메모, 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
+      <li><b>🧠 연상으로 외우기</b>를 누르면 소리가 비슷한 말과 엉뚱한 장면으로 엮은 연상이 나와요. 말장난은 기억 손잡이일 뿐 낱말의 뜻이나 유래가 아니에요.</li>
+      <li><b>✏️ 메모</b>에 그 문제에 대한 나만의 연상이나 헷갈린 이유를 적어 두세요. 다음에 그 카드가 나오면 맞혀도 틀려도 맨 위에 보여요. 지우려면 비우고 저장하세요.</li>
       <li>이상한 카드는 <b>신고</b>. 관리 → 신고한 카드에 모여요.</li>
     </ul>
     <h2 id="tipsHead">잘 외우는 꿀팁</h2>
@@ -155,6 +158,7 @@
       <li><b>백지에 흐름 쓰기.</b> 한 시대를 마치면 빈 종이에 3분 동안 흐름을 적어 보세요. 막힌 곳이 다음에 볼 곳이에요.</li>
       <li><b>소리 내어 설명하기.</b> 남에게 가르치듯 말해 보세요. 말이 막히는 곳이 정확히 모르는 곳이에요.</li>
       <li><b>틀려도 손해가 아니에요.</b> 떠올리려 애쓴 뒤 정답을 보면 그냥 읽을 때보다 잘 남아요. 그래서 틀린 카드가 곧 다시 나와요.</li>
+      <li><b>안 외워지면 연상으로.</b> 사건과 왕처럼 이유 없이 짝지어진 것은 소리가 비슷한 말로 엉뚱한 장면을 만들면 붙어요. 예: '근육'왕 근초고가 왜에 칠지도를 던져 줌. 앱의 🧠 연상보다 내 것이 더 잘 떠오르면 ✏️ 메모에 적으세요.</li>
       <li><b>자기 전 10분 복습.</b> 자는 동안 그날 외운 것이 굳어요. 밤새우기보다 자는 게 점수에 나아요.</li>
     </ol>
     <details><summary>뼈대 연표</summary>
@@ -214,7 +218,7 @@
       <li><b>신고한 카드·완료 카드:</b> 확인하고 해제하거나 처음부터 다시 배우기</li>
     </ul></details>
     <details><summary>학습 기록은 어디에?</summary>
-      <p>이 휴대폰 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 관리 → 기록 백업 → 내보내기로 파일을 받아 두세요. 새 휴대폰에서는 불러오기로 이어서 할 수 있어요.</p>
+      <p>이 휴대폰 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 관리 → 기록 백업 → 내보내기로 파일을 받아 두세요. ✏️ 메모도 함께 담겨요. 새 휴대폰에서는 불러오기로 이어서 할 수 있어요.</p>
     </details>
   </section>
 

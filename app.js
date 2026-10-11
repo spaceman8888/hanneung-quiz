@@ -5,7 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean' };
+const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean', myNotes: isObj };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -34,6 +34,7 @@ let stats = load('stats', { date: '', count: 0, fresh: 0 });
 let exam = load('exam', '');
 let hideKeys = load('hideKeys', false);
 let recallFirst = load('recallFirst', false);
+let myNotes = load('myNotes', {});   // card id -> the learner's own note
 let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
 let sure = false, shownAt = null, chars = 0, reveal = null;   // current question: "이미 알아요" pressed, when options showed
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
@@ -197,14 +198,39 @@ function onAnswer(correct, button) {
   $('feedback').replaceChildren(p);
   if (mode === 'chain') $('feedback').append(el('p', `(가) ${card.front}`));
   if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
-  if (!correct) $('feedback').append(...L.missLines(card, { chose: button?.dataset.choice, cards: allCards(), item: noteIdx.get(card.id), lapses: L.entry(progress[card.id]).lapses })
-    .map(l => el('p', l.text, 'tip ' + l.k)));
+  const help = el('div');
+  let assocOpen = false;
+  const drawHelp = () => help.replaceChildren(...[
+    ...(correct ? [myNotes[id] && { k: 'mine', text: '✏️ ' + myNotes[id] }]
+      : L.missLines(card, { chose: button?.dataset.choice, cards: allCards(), item: noteIdx.get(id), lapses: L.entry(progress[id]).lapses, mine: myNotes[id] })),
+    assocOpen && { k: 'assoc', text: '🧠 ' + card.assoc },
+  ].filter(Boolean).map(l => el('p', l.text, 'tip ' + l.k)));
+  drawHelp();
+  $('feedback').append(help);
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
-  if (correct && !card.note && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
+  if (correct && !card.note && !myNotes[id] && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
-  if (correct) return;
-  const item = noteIdx.get(card.id);
-  if (item) $('feedback').append(btn('노트 보기', () => { noteFrom = true; history.pushState(2, ''); renderNotes(card.era, item.id); }));
+  if (!correct && card.assoc) { const b = btn('🧠 연상으로 외우기', () => { assocOpen = true; drawHelp(); b.remove(); }); $('feedback').append(b); }
+  const editor = el('div', null, 'myNote');
+  const memoBtn = btn(myNotes[id] ? '✏️ 메모 고치기' : '✏️ 메모', () => {
+    const ta = el('textarea');
+    ta.value = myNotes[id] ?? '';
+    ta.maxLength = 300;
+    ta.placeholder = '나만의 연상, 헷갈린 이유, 외울 말…';
+    ta.setAttribute('aria-label', '이 문제에 대한 내 메모');
+    editor.replaceChildren(ta, btn('저장', () => {
+      myNotes = L.setMyNote(myNotes, id, ta.value);
+      save('myNotes', myNotes);
+      memoBtn.textContent = myNotes[id] ? '✏️ 메모 고치기' : '✏️ 메모';
+      editor.replaceChildren();
+      drawHelp();
+    }), btn('취소', () => editor.replaceChildren()));
+    ta.focus();
+  });
+  $('feedback').append(memoBtn);
+  const item = noteIdx.get(id);
+  if (!correct && item) $('feedback').append(btn('노트 보기', () => { noteFrom = true; history.pushState(2, ''); renderNotes(card.era, item.id); }));
+  $('feedback').append(editor);
 }
 
 const el = (tag, text, cls) => {
@@ -478,7 +504,7 @@ $('clearCustomBtn').onclick = () => {
 };
 
 $('exportBtn').onclick = () => {
-  const data = { version: 3, progress, customCards: custom, stats, exam };
+  const data = { version: 3, progress, customCards: custom, stats, exam, myNotes };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `hanneung-backup-${L.today()}.json`;
@@ -501,7 +527,8 @@ $('backupFile').onchange = async e => {
   custom = data.customCards ?? custom;
   stats = data.stats ?? stats;
   if (typeof data.exam === 'string') exam = data.exam;
-  save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam);
+  myNotes = data.myNotes ?? myNotes;
+  save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam); save('myNotes', myNotes);
   $('backupMsg').textContent = '불러오기 완료';
 };
 

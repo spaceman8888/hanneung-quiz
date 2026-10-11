@@ -226,7 +226,8 @@ export function isStats(v) {
 export function validateBackup(data) {
   return isObj(data) && isObj(data.progress)
     && (data.customCards === undefined || Array.isArray(data.customCards))
-    && (data.stats === undefined || isStats(data.stats));
+    && (data.stats === undefined || isStats(data.stats))
+    && (data.myNotes === undefined || isObj(data.myNotes));
 }
 
 export const ORDER_GAP = 3;
@@ -385,13 +386,21 @@ export function ownerCard(card, choice, cards) {
   return same.find(c => c.era === card.era) ?? same[0] ?? null;
 }
 
-// After a miss: a nudge if it keeps slipping, how to remember it, why, what the chosen option really was, the confusable pair.
-export function missLines(card, { chose = null, cards = [], item = null, lapses = 0 } = {}) {
+// The learner's own note on a card ({ id: text }); blank removes it.
+export function setMyNote(notes, id, text) {
+  const { [id]: _, ...rest } = notes;
+  const t = text.trim();
+  return t ? { ...rest, [id]: t } : rest;
+}
+
+// After a miss: a nudge if it keeps slipping, my own note, how to remember it, why, what the chosen option really was, the confusable pair.
+export function missLines(card, { chose = null, cards = [], item = null, lapses = 0, mine = '' } = {}) {
   const o = chose ? ownerCard(card, chose, cards) : null;
   const hint = o && (o.memo ?? o.tip ?? o.note);
   const memo = card.memo ?? item?.memo;
   return [
     lapses >= 2 && { k: 'again', text: `복습에서 ${lapses}번 틀린 카드예요. 외우는 법을 소리 내어 읽고 노트도 열어 보세요.` },
+    mine && { k: 'mine', text: '✏️ ' + mine },
     memo && { k: 'memo', text: '🔑 ' + memo },
     card.tip && { k: 'tip', text: '💡 ' + card.tip },
     hint && { k: 'vs', text: card.type === '판별' ? `↔ 내가 고른 보기는 ${o.front} 이야기: ${hint}` : `↔ 내가 고른 '${chose}': ${hint}` },
