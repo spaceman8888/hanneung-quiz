@@ -131,3 +131,9 @@ test('every card except 사진/지도 has a one-line tip (≤ 90 chars) shown af
     && !(typeof c.tip === 'string' && c.tip.trim() && c.tip.length <= 90 && !c.tip.includes('\n'))).map(c => c.id);
   assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards without a valid tip`);
 });
+
+test('memo (외우는 법), when present, is one line ≤ 70 chars, not the tip again, and only on cards with a tip', () => {
+  const bad = cards.filter(c => 'memo' in c && !(typeof c.memo === 'string' && c.memo.trim() && c.memo.length <= 70
+    && !c.memo.includes('\n') && c.memo !== c.tip && c.tip && !c.memo.startsWith('🔑'))).map(c => c.id);
+  assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards with a bad memo`);
+});

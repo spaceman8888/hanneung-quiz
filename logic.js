@@ -377,3 +377,24 @@ export function project(lat, lon) {
   return [r1((lon - MAP.lon0) * COS * MAP.k), r1((MAP.lat1 - lat) * MAP.k)];
 }
 export const MAP_VIEW = `0 0 ${project(MAP.lat0, MAP.lon1).join(' ')}`;
+
+// The card a wrong option belongs to: same kind of answer, same era first. 시기·지도 options (kings, places) have no single owner.
+export function ownerCard(card, choice, cards) {
+  if (card.type === '시기' || card.type === '지도') return null;
+  const same = cards.filter(c => c.back === choice && choiceClass(c) === choiceClass(card));
+  return same.find(c => c.era === card.era) ?? same[0] ?? null;
+}
+
+// After a miss: a nudge if it keeps slipping, how to remember it, why, what the chosen option really was, the confusable pair.
+export function missLines(card, { chose = null, cards = [], item = null, lapses = 0 } = {}) {
+  const o = chose ? ownerCard(card, chose, cards) : null;
+  const hint = o && (o.memo ?? o.tip ?? o.note);
+  const memo = card.memo ?? item?.memo;
+  return [
+    lapses >= 2 && { k: 'again', text: `복습에서 ${lapses}번 틀린 카드예요. 외우는 법을 소리 내어 읽고 노트도 열어 보세요.` },
+    memo && { k: 'memo', text: '🔑 ' + memo },
+    card.tip && { k: 'tip', text: '💡 ' + card.tip },
+    hint && { k: 'vs', text: card.type === '판별' ? `↔ 내가 고른 보기는 ${o.front} 이야기: ${hint}` : `↔ 내가 고른 '${chose}': ${hint}` },
+    item?.confuse && { k: 'confuse', text: '⚠ ' + item.confuse },
+  ].filter(Boolean);
+}

@@ -6,7 +6,7 @@ import { today, normalize, isShort, ERAS,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -623,4 +623,44 @@ test('review: Hard grows stability less than Good', () => {
   assert.equal(review(undefined, 2, 0).due, 1);
   const p = review(undefined, 3, 0);
   assert.ok(review(p, 2, 3).s < review(p, 3, 3).s);
+});
+
+test('ownerCard: the card a wrong option belongs to (same kind, same era first); none for 시기·지도', () => {
+  const k = { id: 'k', type: '인물', era: '고려', front: '노비안검법', back: '광종' };
+  const s1 = { id: 's1', type: '인물', era: '조선 전기', front: '경국대전 완성', back: '성종' };
+  const s2 = { id: 's2', type: '인물', era: '고려', front: '12목 설치', back: '성종' };
+  const j = { id: 'j', type: '판별', era: '고려', front: '성종', back: '12목에 지방관 파견' };
+  const cards = [k, s1, s2, j];
+  assert.equal(ownerCard(k, '성종', cards), s2);
+  assert.equal(ownerCard({ ...j, id: 'j2', front: '광종', back: '노비안검법 실시' }, '12목에 지방관 파견', cards), j);
+  assert.equal(ownerCard({ id: 'p', type: '시기', era: '고려', back: '광종' }, '성종', cards), null);
+  assert.equal(ownerCard(k, '없는 답', cards), null);
+});
+
+test('missLines: how to remember first, then why, what I chose, the confusable pair', () => {
+  const k = { id: 'k', type: '인물', era: '고려', front: '노비안검법', back: '광종', tip: '호족 누르기', memo: '광종 = 칼' };
+  const s = { id: 's', type: '인물', era: '고려', front: '12목 설치', back: '성종', tip: '제도 정비', memo: '성종 = 설계도' };
+  const item = { memo: '노트 요령', confuse: '광종 ↔ 성종' };
+  const ls = missLines(k, { chose: '성종', cards: [k, s], item });
+  assert.deepEqual(ls.map(l => l.k), ['memo', 'tip', 'vs', 'confuse']);
+  assert.equal(ls[0].text, '🔑 광종 = 칼');
+  assert.equal(ls[2].text, "↔ 내가 고른 '성종': 성종 = 설계도");
+  // no own memo → the note item's; 모르겠어요 → no chosen option; no tip on the chosen card → its memo/tip/note, else nothing
+  const ls2 = missLines({ ...k, memo: undefined }, { cards: [k, s], item });
+  assert.deepEqual(ls2.map(l => l.text), ['🔑 노트 요령', '💡 호족 누르기', '⚠ 광종 ↔ 성종']);
+  assert.deepEqual(missLines(k, { chose: '성종', cards: [k, { ...s, tip: undefined, memo: undefined }] }).map(l => l.k), ['memo', 'tip']);
+});
+
+test('missLines: a 판별 miss names whose fact I picked', () => {
+  const j = { id: 'j', type: '판별', era: '고려', front: '광종', back: '노비안검법 실시', tip: 't' };
+  const o = { id: 'o', type: '판별', era: '고려', front: '성종', back: '12목에 지방관 파견', tip: '최승로 건의' };
+  assert.equal(missLines(j, { chose: o.back, cards: [j, o] }).find(l => l.k === 'vs').text, '↔ 내가 고른 보기는 성종 이야기: 최승로 건의');
+});
+
+test('missLines: missed in review twice or more → a nudge first', () => {
+  const k = { id: 'k', type: '인물', era: '고려', front: 'f', back: 'b', tip: 't', memo: 'm' };
+  assert.equal(missLines(k, { lapses: 1 })[0].k, 'memo');
+  const ls = missLines(k, { lapses: 3 });
+  assert.equal(ls[0].k, 'again');
+  assert.match(ls[0].text, /3번/);
 });

@@ -197,7 +197,8 @@ function onAnswer(correct, button) {
   $('feedback').replaceChildren(p);
   if (mode === 'chain') $('feedback').append(el('p', `(가) ${card.front}`));
   if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
-  if (!correct && card.tip) $('feedback').append(el('p', '💡 ' + card.tip, 'tip'));
+  if (!correct) $('feedback').append(...L.missLines(card, { chose: button?.dataset.choice, cards: allCards(), item: noteIdx.get(card.id), lapses: L.entry(progress[card.id]).lapses })
+    .map(l => el('p', l.text, 'tip ' + l.k)));
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
   if (correct && !card.note && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
@@ -278,10 +279,8 @@ function grade(card, g) {
 
 // What a wrong option actually belongs to, so every miss teaches the distinction.
 function ownerOf(card, choice) {
-  if (card.type === '시기' || card.type === '지도') return null;
-  if (card.type === '사진') return allCards().find(c => c.type === '사진' && c.back === choice)?.period;
-  const same = allCards().filter(c => c.back === choice && L.choiceClass(c) === L.choiceClass(card));
-  return (same.find(c => c.era === card.era) ?? same[0])?.front;
+  const o = L.ownerCard(card, choice, allCards());
+  return card.type === '사진' ? o?.period : o?.front;
 }
 
 function bumpStats() {

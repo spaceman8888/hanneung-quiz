@@ -26,6 +26,7 @@
   .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
   #feedback p { font-size:19px; font-weight:600; } #feedback p.muted { font-size:15px; font-weight:400; }
   #feedback p.tip { font-size:16px; font-weight:400; line-height:1.55; background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:10px 12px; word-break:keep-all; }
+  #feedback p.tip.memo { font-weight:600; } #feedback p.tip.again { border-left-color:var(--bad); color:var(--bad); font-weight:600; }
   .photoGrid small.credit { font-size:11px; }
   #feedback button { margin:4px 8px 4px 0; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:13px; } .stats div { text-align:center; } .stats b { display:block; font-size:24px; }
@@ -136,7 +137,7 @@
       <li>모르면 찍지 말고 <b>모르겠어요</b>. 찍어서 맞히면 아는 줄 알고 너무 늦게 다시 나와요.</li>
       <li><b>이미 알아요</b>는 확실할 때만. 누른 뒤 답을 골라야 확인돼요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.</li>
       <li>오래 고민해 맞힌 카드는 저절로 조금 일찍 다시 나와요. 서두르지 않아도 돼요.</li>
-      <li>틀리면 💡 도움말과 오답 보기 밑 작은 글씨(그 보기가 가리키는 것)까지 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
+      <li>틀리면 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 맞힐 때까지 같은 묶음에서 다시 나와요.</li>
       <li>이상한 카드는 <b>신고</b>. 관리 → 신고한 카드에 모여요.</li>
     </ul>
     <h2 id="tipsHead">잘 외우는 꿀팁</h2>
