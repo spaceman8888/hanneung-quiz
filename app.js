@@ -36,7 +36,7 @@ let hideKeys = load('hideKeys', false);
 let recallFirst = load('recallFirst', false);
 let myNotes = load('myNotes', {});   // card id -> the learner's own note
 let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
-let sure = false, shownAt = null, chars = 0, reveal = null;   // current question: "이미 알아요" pressed, when options showed
+let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   // current question: "이미 알아요" pressed, when options showed, asked 기출형
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
@@ -147,7 +147,8 @@ function renderQuestion() {
   if (!item) return startBatch();
   const { card } = item;
   showMedia(card);
-  const lines = mode === 'chain' ? chainIdx.get(card.id) : null;
+  asChain = mode === 'chain' || (mode !== 'note' && L.chainStyle(progress[card.id], chainIdx.has(card.id)));
+  const lines = asChain ? chainIdx.get(card.id) : null;
   $('qTag').textContent = `${card.era} · ${lines ? '기출형' : card.type}`;
   $('qClues').hidden = !lines;
   $('qClues').textContent = lines ? '(가) ' + lines[Math.floor(Math.random() * lines.length)] : '';
@@ -196,7 +197,7 @@ function onAnswer(correct, button) {
   p.className = correct ? 'ok' : 'bad';
   p.textContent = !correct ? `정답: ${card.back}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
   $('feedback').replaceChildren(p);
-  if (mode === 'chain') $('feedback').append(el('p', `(가) ${card.front}`));
+  if (asChain) $('feedback').append(el('p', `(가) ${card.front}`));
   if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
   const help = el('div');
   let assocOpen = false;
@@ -208,7 +209,7 @@ function onAnswer(correct, button) {
   drawHelp();
   $('feedback').append(help);
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
-  if (correct && !card.note && !myNotes[id] && mode !== 'chain') { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
+  if (correct && !card.note && !myNotes[id] && !asChain) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
   if (!correct && card.assoc) { const b = btn('🧠 연상으로 외우기', () => { assocOpen = true; drawHelp(); b.remove(); }); $('feedback').append(b); }
   const editor = el('div', null, 'myNote');

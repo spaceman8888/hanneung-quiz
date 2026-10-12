@@ -152,6 +152,17 @@ function mixEras(cards, rng) {
   return cards.map((_, i) => { let r = rng() * (cards.length - i); return lists.find(l => (r -= l.length) < 0).shift(); });
 }
 
+// One card per subject while other subjects are left: a sibling just answered gives the next one away and inflates its grade.
+const subjectOf = c => (c.type === '판별' ? c.front : c.back);
+function oneEach(list, size) {
+  const seen = new Set(), first = [], rest = [];
+  for (const c of list) {
+    if (seen.has(subjectOf(c))) rest.push(c);
+    else { seen.add(subjectOf(c)); first.push(c); }
+  }
+  return [...first, ...rest].slice(0, size);
+}
+
 export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, skip = new Set(), size = BATCH_SIZE, rng = Math.random }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
@@ -162,14 +173,14 @@ export function buildBatch(cards, progress, { day, eras = null, type = null, ids
   const unseen = pool.filter(c => !p(c.id).s);
   const fresh = eras?.length > 1 ? mixEras(unseen, rng) : unseen;
   const ahead = seen.filter(c => p(c.id).due > day).sort(forgot);
-  return [...due, ...fresh, ...ahead].slice(0, size);
+  return oneEach([...due, ...fresh, ...ahead], size);
 }
 
 export function weakBatch(cards, progress, { day, skip = new Set(), eras = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  return cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
-    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || recall(progress[a.id], day) - recall(progress[b.id], day))
-    .slice(0, size);
+  const list = cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
+    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || recall(progress[a.id], day) - recall(progress[b.id], day));
+  return oneEach(list, size);
 }
 
 export function counts(cards, progress, day) {
@@ -201,7 +212,7 @@ export function submit(session, correct) {
   const item = session.queue.shift();
   if (!correct) {
     session.wrong.add(item.card.id);
-    session.queue.splice(Math.min(2, session.queue.length), 0, item);
+    session.queue.push(item);   // the end of the batch: a longer gap makes the retry a real recall
     return null;
   }
   return item.card;
@@ -342,6 +353,11 @@ export function chainIndex(cards, sets = []) {
     if (ok.length) idx.set(c.id, ok);
   }
   return idx;
+}
+
+// A card already known well (mature) is asked the way the exam does about half the time: (가) 자료 → 옳은 설명.
+export function chainStyle(prev, hasLines, rng = Math.random) {
+  return hasLines && entry(prev).s >= MATURE && rng() < 0.5;
 }
 
 // FSRS grade of a first answer: sure ("이미 알아요") and right = Easy; right but slower than reading time allows = Hard.

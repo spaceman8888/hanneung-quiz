@@ -6,7 +6,7 @@ import { today, normalize, isShort, ERAS,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -86,10 +86,10 @@ test('submit: correct answer finishes the card immediately (multiple choice only
   assert.equal(s.wrong.size, 0);
 });
 
-test('submit: wrong reinserts 2 behind and records wrong', () => {
+test('submit: wrong goes to the end of the batch (longer gap, harder recall) and records wrong', () => {
   const s = createSession(cardsN(4), {});
   submit(s, false);
-  assert.deepEqual(s.queue.map(q => q.card.id), ['k1', 'k2', 'k0', 'k3']);
+  assert.deepEqual(s.queue.map(q => q.card.id), ['k1', 'k2', 'k3', 'k0']);
   assert.ok(s.wrong.has('k0'));
 });
 
@@ -227,6 +227,27 @@ test('buildBatch: several eras — only those eras, new cards mixed at random, e
     firsts.add(ids[0][0]);
   }
   assert.equal(firsts.size, 2);   // not always the same era first
+});
+
+test('buildBatch: one card per subject per batch while others are left, then the rest', () => {
+  const cs = [mk('a', '광종'), { ...mk('b', '과거제 실시'), front: '광종', type: '판별' }, mk('c', '세종'), { ...mk('d', '광종'), type: '시기' }, mk('e', '태조')];
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, size: 3 }).map(c => c.id), ['a', 'c', 'e']);
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, size: 5 }).map(c => c.id), ['a', 'c', 'e', 'b', 'd']);
+});
+
+test('weakBatch: one card per subject first', () => {
+  const progress = { a: S(3, 0, 3, 3), b: S(3, 0, 3, 2), c: S(3, 0, 3, 1) };
+  const cs = [mk('a', '광종'), mk('b', '광종'), mk('c', '세종')];
+  assert.deepEqual(weakBatch(cs, progress, { day: 4, size: 2 }).map(c => c.id), ['a', 'c']);
+});
+
+test('chainStyle: a mature card with 자료 lines is asked 기출형 about half the time', () => {
+  const mature = S(MATURE, 0, MATURE), young = S(MATURE - 1, 0, MATURE - 1);
+  assert.equal(chainStyle(mature, true, () => 0.3), true);
+  assert.equal(chainStyle(mature, true, () => 0.7), false);
+  assert.equal(chainStyle(young, true, () => 0.3), false);
+  assert.equal(chainStyle(mature, false, () => 0.3), false);
+  assert.equal(chainStyle(undefined, true, () => 0.3), false);
 });
 
 test('weakBatch: several eras', () => {
