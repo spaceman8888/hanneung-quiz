@@ -6,7 +6,7 @@ import { today, normalize, isShort, ERAS,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -701,4 +701,47 @@ test('setMyNote: trims, blank deletes, input untouched', () => {
   assert.deepEqual(setMyNote(a, 'c2', '  근육왕 \n'), { c1: 'x', c2: '근육왕' });
   assert.deepEqual(setMyNote(a, 'c1', '   '), {});
   assert.deepEqual(a, { c1: 'x' });
+});
+
+test('rounds: past-exam cards first, then the rest, each split into even rounds of at most size', () => {
+  const cs = cardsN(8);
+  const hits = new Map([['k0', 3], ['k1', 1], ['k2', 2], ['k3', 1], ['k4', 1]]);
+  const r = rounds(cs, hits, 2);
+  assert.deepEqual(r.map(x => [x.gichul, x.cards.map(c => c.id)]),
+    [[true, ['k0', 'k1']], [true, ['k2', 'k3']], [true, ['k4']], [false, ['k5', 'k6']], [false, ['k7']]]);
+  assert.deepEqual(rounds(cardsN(5), new Map(), 4).map(x => x.cards.length), [3, 2]);   // 5 → 3 + 2, not 4 + 1
+  assert.deepEqual(rounds([], new Map()), []);
+});
+
+test('currentRound: the first round with a card never answered, -1 when all are', () => {
+  const r = rounds(cardsN(4), new Map(), 2);
+  assert.equal(currentRound(r, {}), 0);
+  assert.equal(currentRound(r, { k0: S(1, 0, 1), k1: S(1, 0, 1) }), 1);
+  assert.equal(currentRound(r, { k0: S(1, 0, 1), k1: S(1, 0, 1), k2: S(1, 0, 1), k3: S(1, 0, 1) }), -1);
+});
+
+test('buildBatch round: new cards from the current round first (mixed eras stay inside it), due still first', () => {
+  const cs = [...Array.from({ length: 6 }, (_, i) => mk('g' + i, 'g' + i, '고려')),
+    ...Array.from({ length: 6 }, (_, i) => mk('j' + i, 'j' + i, '조선 전기'))];
+  const round = new Set(['g0', 'g1', 'j0', 'j1']);
+  for (let s = 1; s <= 20; s++) {
+    const ids = buildBatch(cs, { j5: S(1, 0, 1) }, { day: 5, eras: ['고려', '조선 전기'], round, rng: seeded(s) }).map(c => c.id);
+    assert.equal(ids[0], 'j5');
+    assert.deepEqual(new Set(ids.slice(1, 5)), round, `seed ${s}`);
+  }
+});
+
+test('miss: every wrong answer counts, first sight too (lapses stays review misses); old records start at lapses', () => {
+  const a = review(undefined, 1, 0);
+  assert.deepEqual([a.miss, a.lapses], [1, 0]);
+  const b = review(a, 1, 5);
+  assert.deepEqual([b.miss, b.lapses], [2, 1]);
+  assert.equal(review(undefined, 3, 0).miss, 0);
+  assert.equal(entry({ s: 3, lapses: 2 }).miss, 2);
+});
+
+test('weakBatch and counts.weak include a card missed on first sight', () => {
+  const progress = { k0: review(undefined, 1, 0), k1: review(undefined, 3, 0) };
+  assert.deepEqual(weakBatch(cardsN(3), progress, { day: 1 }).map(c => c.id), ['k0']);
+  assert.equal(counts(cardsN(3), progress, 1).weak, 1);
 });

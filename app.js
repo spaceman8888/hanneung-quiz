@@ -40,16 +40,17 @@ let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   /
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
+let hits = new Map(), roundSel = null, lastRound = -1, roundNote = '';   // gichul hits per card; the round 풀기/오답만 is on; round 학습 시작 was in
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
 
 const MODE_LABEL = { normal: '학습', weak: '자주 틀린 카드', period: '시기 맞히기', judge: '보기 판별', order: '순서 문제', note: '노트 카드', photo: '사진 고르기', chain: '기출형' };
 const MODE_TYPE = { period: '시기', judge: '판별' };
-const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.', chain: '기출형으로 낼 카드가 없어요.' };
+const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.', chain: '기출형으로 낼 카드가 없어요.', round: '이 라운드에 지금 풀 카드가 없어요.', roundWeak: '이 라운드에 오답이 없어요.' };
 
 const allCards = () => [...baseCards, ...custom];
 const show = id => {
-  ['home', 'study', 'manage', 'notes', 'guide'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes', 'guide', 'rounds'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
@@ -61,6 +62,10 @@ const examDay = () => (exam ? L.dayOf(new Date(exam + 'T00:00')) : null);
 const eraBoxes = () => [...$('eraBoxes').querySelectorAll('input')];
 const selEras = () => eraBoxes().filter(b => b.checked && b.value).map(b => b.value);
 const setEras = list => eraBoxes().forEach(b => { b.checked = b.value ? list.includes(b.value) : !list.length; });
+const modeLabel = () => (mode === 'round' ? roundSel.name : mode === 'roundWeak' ? roundSel.name + ' 오답' : MODE_LABEL[mode]);
+// Rounds of the selected eras (전체 = all eras mixed): most-tested 100 cards each.
+const eraRounds = () => L.rounds(allCards().filter(c => L.inEras(c, selEras())), hits);
+const roundName = (rs, i) => `${rs[i].gichul ? '기출' : '심화'} 라운드 ${i + 1}`;
 const eraNote = () => { const e = selEras(); return !e.length ? '' : ' · ' + (e.length > 2 ? `시대 ${e.length}개` : e.join(', ')); };
 
 function renderHome() {
@@ -90,11 +95,22 @@ function renderHome() {
   $('doneCount').textContent = n.done;
   $('todayCount').textContent = todayCount();
   $('weakBtn').textContent = `자주 틀린 카드 (${n.weak})`;
+  const rs = eraRounds(), cur = L.currentRound(rs, progress);
+  const rb = $('roundBtn'), bar = el('progress');
+  if (cur < 0) rb.replaceChildren(el('span', `라운드 ${rs.length}개를 모두 풀었어요`), el('span', `오답 ${n.weak} ›`));
+  else {
+    const r = rs[cur], k = L.counts(r.cards, progress, day);
+    bar.max = r.cards.length;
+    bar.value = r.cards.length - k.fresh;
+    rb.replaceChildren(el('span', `${roundName(rs, cur)} / ${r.gichul ? rs.filter(x => x.gichul).length : rs.length}`),
+      el('span', `${bar.value}/${bar.max} · 오답 ${k.weak} ›`), bar);
+  }
   $('recall').textContent = `지금 기억하는 카드: 약 ${Math.round(100 * n.recall / Math.max(1, inEra.length))}%`;
   const ex = examDay();
+  const left = allCards().filter(c => hits.has(c.id) && !L.entry(progress[c.id]).s).length;   // past-exam cards first; the rest after
   $('plan').textContent = ex === null ? '관리에서 시험일을 정하면 하루 목표를 알려 드려요.'
     : ex <= day ? '시험일이 지났어요. 관리에서 다음 시험일을 정해 주세요.'
-    : `시험까지 D-${ex - day} · 오늘 새 카드 ${todayFresh()} / 목표 ${L.dailyNew(L.counts(allCards(), progress, day).fresh, day, ex)}장 · 오늘 복습은 매일 모두`;
+    : `시험까지 D-${ex - day} · 오늘 새 카드 ${todayFresh()} / 목표 ${L.dailyNew(left || L.counts(allCards(), progress, day).fresh, day, ex)}장${left ? ` (기출 카드 ${left}장 남음)` : ''} · 오늘 복습은 매일 모두`;
   $('eraTable').replaceChildren(...L.ERAS.map(e => {
     const inEra = allCards().filter(c => c.era === e);
     if (!inEra.length) return null;
@@ -109,10 +125,37 @@ function renderHome() {
   show('home');
 }
 
+function renderRounds() {
+  const day = L.dayOf(), rs = eraRounds(), cur = L.currentRound(rs, progress);
+  $('roundsNote').textContent = `시대: ${selEras().join(', ') || '전체'} · 기출에 자주 나온 카드부터 ${L.ROUND_SIZE}장 안팎씩 묶었어요. 틀린 카드는 다음 날부터 복습으로 따라와요.`;
+  const rows = rs.map((r, i) => {
+    const k = L.counts(r.cards, progress, day), d = el('div', null, i === cur ? 'roundRow cur' : 'roundRow');
+    const bar = el('progress');
+    bar.max = r.cards.length;
+    bar.value = r.cards.length - k.fresh;
+    const go = (m, label, n) => {
+      const b = btn(`${label} (${n})`, () => { roundSel = { name: roundName(rs, i), cards: r.cards }; enterMode(m); });
+      b.disabled = !n;
+      return b;
+    };
+    const btns = el('div', null, 'row');
+    btns.append(go('round', '풀기', k.due + k.fresh), go('roundWeak', '오답만', k.weak));
+    d.append(el('b', roundName(rs, i)), el('span', ` ${bar.value}/${bar.max} 풀이 · 완료 ${k.done} · 오답 ${k.weak}`, 'muted'), bar, btns);
+    return d;
+  });
+  const deep = el('details');
+  deep.open = cur >= 0 && !rs[cur].gichul;
+  deep.append(el('summary', '심화 라운드 — 기출(57~79회)에 안 나온 카드'), ...rows.filter((_, i) => !rs[i].gichul));
+  $('roundsBody').replaceChildren(...rows.filter((_, i) => rs[i].gichul), ...(deep.children.length > 1 ? [deep] : []));
+  show('rounds');
+  (rows[cur] ?? $('rounds')).scrollIntoView({ block: 'center' });
+}
+
 function enterMode(m) {
   mode = m;
   noteFrom = false;   // a new session replaces the one a note was opened from
   practiced = new Set();
+  lastRound = -1;
   $('homeMsg').textContent = '';
   doneCount = 0;
   startBatch();
@@ -124,12 +167,22 @@ function startBatch() {
   if (mode === 'photo') return renderPhoto();
   const eras = selEras();
   const day = L.dayOf();
-  const batch = mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, eras })
+  let round = null;
+  $('roundMsg').textContent = roundNote = '';
+  if (mode === 'normal') {
+    const rs = eraRounds(), cur = L.currentRound(rs, progress);
+    if (lastRound >= 0 && cur !== lastRound) $('roundMsg').textContent = `🎉 ${roundName(rs, lastRound)} 완료! 틀린 ${L.counts(rs[lastRound].cards, progress, day).weak}장은 복습으로 다시 나와요.`;
+    lastRound = cur;
+    if (cur >= 0) { round = new Set(rs[cur].cards.map(c => c.id)); roundNote = ` · ${roundName(rs, cur)}`; }
+  }
+  const batch = mode === 'round' ? L.buildBatch(roundSel.cards.filter(c => L.entry(progress[c.id]).due <= day), progress, { day, eras })   // due + new only
+    : mode === 'roundWeak' ? L.weakBatch(roundSel.cards, progress, { day, skip: practiced })
+    : mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, eras })
     : mode === 'note' ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
     : mode === 'chain' ? L.buildBatch(allCards(), progress, { day, eras, ids: chainIdx })   // a Map has .has()
-    : L.buildBatch(allCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null });
+    : L.buildBatch(allCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null, round });
   if (!batch.length) {
-    $('homeMsg').textContent = (mode === 'weak' || mode === 'note') && practiced.size ? `${MODE_LABEL[mode]}: 이번 라운드를 모두 마쳤어요.` : EMPTY_MSG[mode];
+    $('homeMsg').textContent = ['weak', 'note', 'round', 'roundWeak'].includes(mode) && practiced.size ? `${modeLabel()}: 한 바퀴 모두 풀었어요.` : EMPTY_MSG[mode];
     return goHome();
   }
   batch.forEach(c => practiced.add(c.id));
@@ -142,7 +195,7 @@ function startBatch() {
 function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
-  $('progressText').textContent = `${MODE_LABEL[mode]}${mode !== 'note' ? eraNote() : ''} · ${doneCount}장 풀이`;
+  $('progressText').textContent = `${modeLabel()}${mode !== 'note' ? eraNote() : ''}${roundNote} · ${doneCount}장 풀이`;
   const item = session.queue[0];
   if (!item) return startBatch();
   const { card } = item;
@@ -557,6 +610,8 @@ $('dlPhotos').onclick = async () => {
   $('dlMsg').textContent = failed ? `${imgs.length - failed}장 받음, ${failed}장 실패 — 연결을 확인하고 다시 눌러 주세요.` : `완료 — ${imgs.length}장, 오프라인에서도 사진이 보여요.`;
 };
 $('start').onclick = () => enterMode('normal');
+$('roundBtn').onclick = renderRounds;
+$('roundsBack').onclick = goHome;
 $('weakBtn').onclick = () => enterMode('weak');
 $('chainBtn').onclick = () => enterMode('chain');
 $('recallFirst').onchange = e => { recallFirst = e.target.checked; save('recallFirst', recallFirst); };
@@ -592,7 +647,8 @@ try {
   const res = await fetch('gichul.json');
   const data = res.ok ? await res.json() : null;
   if (!Array.isArray(data?.questions) || !Array.isArray(data.sets)) throw 0;
-  baseCards = L.byHits(baseCards, L.gichulHits(data.questions));   // new cards: most-tested first
+  hits = L.gichulHits(data.questions);
+  baseCards = L.byHits(baseCards, hits);   // new cards: most-tested first
   chainIdx = L.chainIndex(allCards(), data.sets);
   if (data.questions.length) gichul = data;
 } catch { chainIdx = L.chainIndex(allCards()); }

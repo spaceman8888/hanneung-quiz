@@ -31,8 +31,9 @@ export function dayOf(d = new Date()) {
 
 const BLANK = { s: 0, d: 0, last: 0, due: 0, lapses: 0, flagged: false };
 
+// miss: every wrong answer, first sight too (lapses: only misses after learning). Before v21 only lapses were kept.
 export function entry(prev) {
-  return { ...BLANK, ...prev };
+  return { ...BLANK, miss: prev?.lapses ?? 0, ...prev };
 }
 
 export function recall(prev, day) {
@@ -54,7 +55,7 @@ export function review(prev, grade, day) {
       : p.s * (1 + Math.exp(W[8]) * (11 - p.d) * p.s ** -W[9] * Math.expm1(W[10] * (1 - r))
         * (grade === 2 ? W[15] : 1) * (grade === 4 ? W[16] : 1));
   }
-  return { ...p, s, d, last: day, due: day + Math.max(1, Math.round(s)), lapses: p.lapses + (p.s && grade === 1 ? 1 : 0) };
+  return { ...p, s, d, last: day, due: day + Math.max(1, Math.round(s)), lapses: p.lapses + (p.s && grade === 1 ? 1 : 0), miss: p.miss + (grade === 1 ? 1 : 0) };
 }
 
 // v1–v6 entries ({ seen, done, lapses, ... }) become one FSRS review dated today.
@@ -163,7 +164,8 @@ function oneEach(list, size) {
   return [...first, ...rest].slice(0, size);
 }
 
-export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, skip = new Set(), size = BATCH_SIZE, rng = Math.random }) {
+// round: the current round's ids — its new cards come before any other new card.
+export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, round = null, skip = new Set(), size = BATCH_SIZE, rng = Math.random }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
   const pool = cards.filter(c => inEras(c, eras) && (!type || c.type === type)
@@ -171,15 +173,16 @@ export function buildBatch(cards, progress, { day, eras = null, type = null, ids
   const seen = pool.filter(c => p(c.id).s);
   const due = seen.filter(c => p(c.id).due <= day).sort(forgot);
   const unseen = pool.filter(c => !p(c.id).s);
-  const fresh = eras?.length > 1 ? mixEras(unseen, rng) : unseen;
+  const mix = list => (eras?.length > 1 ? mixEras(list, rng) : list);
+  const fresh = round ? [...mix(unseen.filter(c => round.has(c.id))), ...mix(unseen.filter(c => !round.has(c.id)))] : mix(unseen);
   const ahead = seen.filter(c => p(c.id).due > day).sort(forgot);
   return oneEach([...due, ...fresh, ...ahead], size);
 }
 
 export function weakBatch(cards, progress, { day, skip = new Set(), eras = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
-  const list = cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).lapses > 0 && p(c.id).s < MATURE)
-    .sort((a, b) => p(b.id).lapses - p(a.id).lapses || recall(progress[a.id], day) - recall(progress[b.id], day));
+  const list = cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).miss > 0 && p(c.id).s < MATURE)
+    .sort((a, b) => p(b.id).miss - p(a.id).miss || recall(progress[a.id], day) - recall(progress[b.id], day));
   return oneEach(list, size);
 }
 
@@ -189,7 +192,7 @@ export function counts(cards, progress, day) {
     const p = entry(progress[c.id]);
     if (!p.s) { r.fresh++; continue; }
     if (p.s >= MATURE) r.done++;
-    else { r.learning++; if (p.lapses > 0) r.weak++; }
+    else { r.learning++; if (p.miss > 0) r.weak++; }
     if (p.due <= day) r.due++;
     r.recall += recall(p, day);
   }
@@ -308,6 +311,17 @@ export function gichulHits(questions) {
 
 // New cards in order of how often past exams used them; Array.sort is stable, so ties keep file order.
 export const byHits = (cards, hits) => [...cards].sort((a, b) => (hits.get(b.id) ?? 0) - (hits.get(a.id) ?? 0));
+
+// Rounds: cards (byHits order) in even chunks of at most `size`; past-exam cards first, never-tested ones (심화) after.
+export const ROUND_SIZE = 100;
+export function rounds(cards, hits, size = ROUND_SIZE) {
+  const split = (list, gichul) => {
+    const k = Math.ceil(list.length / size), n = Math.ceil(list.length / k);
+    return Array.from({ length: k }, (_, i) => ({ gichul, cards: list.slice(i * n, i * n + n) }));
+  };
+  return [...split(cards.filter(c => hits.has(c.id)), true), ...split(cards.filter(c => !hits.has(c.id)), false)];
+}
+export const currentRound = (rs, progress) => rs.findIndex(r => r.cards.some(c => !entry(progress[c.id]).s));
 
 // Past questions answered with the mean recall of their cards, otherwise a 1-in-5 guess.
 // era/pts: where the most points are still missed. ponytail: card recall stands in for the question, real ones are harder.
