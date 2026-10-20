@@ -143,3 +143,13 @@ test('assoc (연상), when present, is one line ≤ 70 chars, not the memo or ti
     && !c.assoc.includes('\n') && c.assoc !== c.tip && c.assoc !== c.memo && c.tip && !c.assoc.startsWith('🧠'))).map(c => c.id);
   assert.deepEqual(bad.slice(0, 20), [], `${bad.length} cards with a bad assoc`);
 });
+
+test('merged.json: every merged card is gone and its keeper exists (records move there)', () => {
+  const merged = JSON.parse(readFileSync(new URL('../merged.json', import.meta.url)));
+  const ids = new Set(cards.map(c => c.id));
+  assert.ok(Object.keys(merged).length > 100);
+  for (const [gone, keep] of Object.entries(merged)) {
+    assert.ok(!ids.has(gone), `${gone} still in cards.json`);
+    assert.ok(ids.has(keep), `${gone} → ${keep} missing`);
+  }
+});

@@ -6,7 +6,7 @@ import { today, normalize, isShort, ERAS,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -744,4 +744,12 @@ test('weakBatch and counts.weak include a card missed on first sight', () => {
   const progress = { k0: review(undefined, 1, 0), k1: review(undefined, 3, 0) };
   assert.deepEqual(weakBatch(cardsN(3), progress, { day: 1 }).map(c => c.id), ['k0']);
   assert.equal(counts(cardsN(3), progress, 1).weak, 1);
+});
+
+test('mergeIds: a merged card record moves to the kept card; both present → join(kept, dropped); input untouched', () => {
+  const map = { old1: 'k1', old2: 'k2', gone: 'k3' };
+  const notes = { old1: 'a', old2: 'b', k2: 'c', x: 'd' };
+  assert.deepEqual(mergeIds(notes, map, (a, b) => a + '\n' + b), { k1: 'a', k2: 'c\nb', x: 'd' });
+  assert.deepEqual(mergeIds(notes, map), { k1: 'a', k2: 'c', x: 'd' });   // default: keep the kept card's
+  assert.deepEqual(notes, { old1: 'a', old2: 'b', k2: 'c', x: 'd' });
 });

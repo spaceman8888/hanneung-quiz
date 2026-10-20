@@ -5,7 +5,7 @@ const warn = msg => { $('warn').textContent = msg; };
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const shapes = { progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean', myNotes: isObj };
+const shapes = { deep: v => typeof v === 'boolean', progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean', myNotes: isObj };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -34,7 +34,14 @@ let stats = load('stats', { date: '', count: 0, fresh: 0 });
 let exam = load('exam', '');
 let hideKeys = load('hideKeys', false);
 let recallFirst = load('recallFirst', false);
+let deep = load('deep', false);   // study range: false = 기본 (cards past exams used) + my imported cards, true = 기본+심화
 let myNotes = load('myNotes', {});   // card id -> the learner's own note
+let mergedIds = {};   // merged.json: merged duplicate card id -> the card kept
+// Records of merged duplicate cards move to the kept card: the stronger memory wins, both notes are kept.
+const mergeRecords = () => {
+  progress = L.mergeIds(progress, mergedIds, (a, b) => (L.entry(b).s > L.entry(a).s ? b : a));
+  myNotes = L.mergeIds(myNotes, mergedIds, (a, b) => a + '\n' + b);
+};
 let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
 let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   // current question: "이미 알아요" pressed, when options showed, asked 기출형
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
@@ -49,6 +56,7 @@ const MODE_TYPE = { period: '시기', judge: '판별' };
 const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 없어요.', judge: '보기 판별 카드가 없어요.', weak: '자주 틀린 카드가 없어요.', note: '이 항목의 카드가 없어요.', chain: '기출형으로 낼 카드가 없어요.', round: '이 라운드에 지금 풀 카드가 없어요.', roundWeak: '이 라운드에 오답이 없어요.' };
 
 const allCards = () => [...baseCards, ...custom];
+const studyCards = () => (deep || !hits.size ? allCards() : [...baseCards.filter(c => hits.has(c.id)), ...custom]);
 const show = id => {
   ['home', 'study', 'manage', 'notes', 'guide', 'rounds'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
@@ -64,8 +72,8 @@ const selEras = () => eraBoxes().filter(b => b.checked && b.value).map(b => b.va
 const setEras = list => eraBoxes().forEach(b => { b.checked = b.value ? list.includes(b.value) : !list.length; });
 const modeLabel = () => (mode === 'round' ? roundSel.name : mode === 'roundWeak' ? roundSel.name + ' 오답' : MODE_LABEL[mode]);
 // Rounds of the selected eras (전체 = all eras mixed): most-tested 100 cards each.
-const eraRounds = () => L.rounds(allCards().filter(c => L.inEras(c, selEras())), hits);
-const roundName = (rs, i) => `${rs[i].gichul ? '기출' : '심화'} 라운드 ${i + 1}`;
+const eraRounds = () => L.rounds(studyCards().filter(c => L.inEras(c, selEras())), hits);
+const roundName = (rs, i) => `${rs[i].gichul ? '기본' : '심화'} 라운드 ${i + 1}`;
 const eraNote = () => { const e = selEras(); return !e.length ? '' : ' · ' + (e.length > 2 ? `시대 ${e.length}개` : e.join(', ')); };
 
 function renderHome() {
@@ -73,7 +81,13 @@ function renderHome() {
   const eras = selEras();
   $('eraSum').textContent = '시대: ' + (eras.join(', ') || '전체');
   const day = L.dayOf();
-  const inEra = allCards().filter(c => L.inEras(c, eras));
+  $('scopeRow').hidden = !hits.size;
+  for (const [id, on, label, k] of [['scopeBasic', !deep, '기본', `기출에 나온 ${(baseCards.filter(c => hits.has(c.id)).length + custom.length).toLocaleString()}장`], ['scopeAll', deep, '기본+심화', `${allCards().length.toLocaleString()}장`]]) {
+    $(id).replaceChildren(el('b', label), el('small', k));
+    $(id).classList.toggle('on', on);
+    $(id).setAttribute('aria-pressed', String(on));
+  }
+  const inEra = studyCards().filter(c => L.inEras(c, eras));
   const n = L.counts(inEra, progress, day);
   const pn = L.counts(inEra.filter(c => c.type === '시기'), progress, day);
   $('periodBtn').textContent = `시기 맞히기 (${pn.due + pn.fresh})`;
@@ -107,12 +121,14 @@ function renderHome() {
   }
   $('recall').textContent = `지금 기억하는 카드: 약 ${Math.round(100 * n.recall / Math.max(1, inEra.length))}%`;
   const ex = examDay();
-  const left = allCards().filter(c => hits.has(c.id) && !L.entry(progress[c.id]).s).length;   // past-exam cards first; the rest after
+  const fresh = L.counts(studyCards(), progress, day).fresh;
+  const left = studyCards().filter(c => hits.has(c.id) && !L.entry(progress[c.id]).s).length;   // 기본 first; 심화 after
   $('plan').textContent = ex === null ? '관리에서 시험일을 정하면 하루 목표를 알려 드려요.'
     : ex <= day ? '시험일이 지났어요. 관리에서 다음 시험일을 정해 주세요.'
-    : `시험까지 D-${ex - day} · 오늘 새 카드 ${todayFresh()} / 목표 ${L.dailyNew(left || L.counts(allCards(), progress, day).fresh, day, ex)}장${left ? ` (기출 카드 ${left}장 남음)` : ''} · 오늘 복습은 매일 모두`;
+    : `시험까지 D-${ex - day} · ` + (!fresh ? `새 카드를 모두 배웠어요${deep ? '' : '. 더 하려면 위에서 기본+심화'}`
+      : `오늘 새 카드 ${todayFresh()} / 목표 ${L.dailyNew(left || fresh, day, ex)}장${deep && left ? ` (기본 카드 ${left}장 남음)` : ''}`) + ' · 오늘 복습은 매일 모두';
   $('eraTable').replaceChildren(...L.ERAS.map(e => {
-    const inEra = allCards().filter(c => c.era === e);
+    const inEra = studyCards().filter(c => c.era === e);
     if (!inEra.length) return null;
     const k = L.counts(inEra, progress, day);
     const b = btn('', () => { setEras([e]); enterMode('normal'); }, 'eraRow');
@@ -177,10 +193,10 @@ function startBatch() {
   }
   const batch = mode === 'round' ? L.buildBatch(roundSel.cards.filter(c => L.entry(progress[c.id]).due <= day), progress, { day, eras })   // due + new only
     : mode === 'roundWeak' ? L.weakBatch(roundSel.cards, progress, { day, skip: practiced })
-    : mode === 'weak' ? L.weakBatch(allCards(), progress, { day, skip: practiced, eras })
+    : mode === 'weak' ? L.weakBatch(studyCards(), progress, { day, skip: practiced, eras })
     : mode === 'note' ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
-    : mode === 'chain' ? L.buildBatch(allCards(), progress, { day, eras, ids: chainIdx })   // a Map has .has()
-    : L.buildBatch(allCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null, round });
+    : mode === 'chain' ? L.buildBatch(studyCards(), progress, { day, eras, ids: chainIdx })   // a Map has .has()
+    : L.buildBatch(studyCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null, round });
   if (!batch.length) {
     $('homeMsg').textContent = ['weak', 'note', 'round', 'roundWeak'].includes(mode) && practiced.size ? `${modeLabel()}: 한 바퀴 모두 풀었어요.` : EMPTY_MSG[mode];
     return goHome();
@@ -582,6 +598,7 @@ $('backupFile').onchange = async e => {
   stats = data.stats ?? stats;
   if (typeof data.exam === 'string') exam = data.exam;
   myNotes = data.myNotes ?? myNotes;
+  mergeRecords();
   save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam); save('myNotes', myNotes);
   $('backupMsg').textContent = '불러오기 완료';
 };
@@ -611,6 +628,8 @@ $('dlPhotos').onclick = async () => {
 };
 $('start').onclick = () => enterMode('normal');
 $('roundBtn').onclick = renderRounds;
+$('scopeBasic').onclick = () => { deep = false; save('deep', deep); renderHome(); };
+$('scopeAll').onclick = () => { deep = true; save('deep', deep); renderHome(); };
 $('roundsBack').onclick = goHome;
 $('weakBtn').onclick = () => enterMode('weak');
 $('chainBtn').onclick = () => enterMode('chain');
@@ -652,6 +671,13 @@ try {
   chainIdx = L.chainIndex(allCards(), data.sets);
   if (data.questions.length) gichul = data;
 } catch { chainIdx = L.chainIndex(allCards()); }
+try {
+  const res = await fetch('merged.json');
+  const data = res.ok ? await res.json() : null;
+  if (!isObj(data)) throw 0;
+  mergedIds = data;
+  if (Object.keys(mergedIds).some(id => id in progress || id in myNotes)) { mergeRecords(); save('progress', progress); save('myNotes', myNotes); }
+} catch {}
 cardById = new Map(allCards().map(c => [c.id, c]));
 $('photoBtn').hidden = !allCards().some(c => c.type === '사진');
 renderHome();

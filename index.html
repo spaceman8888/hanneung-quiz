@@ -39,6 +39,8 @@
   #roundBtn { flex-wrap:wrap; gap:4px 8px; font-weight:600; } #roundBtn span:nth-child(2) { font-weight:400; color:var(--muted); }
   .roundRow { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:8px 0; } .roundRow.cur { border:2px solid var(--accent); }
   .roundRow .row { margin:6px 0 0; } button:disabled { opacity:.45; }
+  .seg button { padding:8px 10px; line-height:1.3; } .seg button small { display:block; color:var(--muted); font-size:13px; }
+  .seg button.on { border:2px solid var(--accent); color:var(--accent); } .seg button.on small { color:var(--accent); }
   #roundMsg { color:var(--ok); font-weight:600; margin:4px 0; } #roundMsg:empty { display:none; }
   #rounds details summary { font-weight:600; padding:12px 0; }
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
@@ -83,6 +85,7 @@
 
   <section id="home">
     <header><h1>한능검 암기 <small id="version" class="muted"></small></h1><span><button id="toGuide">가이드</button> <button id="toManage">관리</button></span></header>
+    <div class="row seg" id="scopeRow" role="group" aria-label="학습 범위"><button id="scopeBasic"></button><button id="scopeAll"></button></div>
     <div class="card stats">
       <div><b id="dueCount">0</b>오늘 복습</div>
       <div><b id="newCount">0</b>새 카드</div>
@@ -138,7 +141,7 @@
     <h2>이렇게 공부하세요</h2>
     <p class="muted">카드는 잊을 때쯤 다시 나와요. 매일 조금씩, 떠올려서 답하는 게 핵심이에요.</p>
     <ol>
-      <li><b>처음 한 번:</b> 관리 → 시험일을 정하세요. 시험 일주일 전까지 기출에 나온 카드를 모두 한 번씩 배우도록 하루 새 카드 목표가 홈에 나와요. 같은 곳의 '보기 가리고 먼저 떠올리기'도 켜 두길 추천해요.</li>
+      <li><b>처음 한 번:</b> 관리 → 시험일을 정하세요. 시험 일주일 전까지 기본 카드(기출에 나온 카드)를 모두 한 번씩 배우도록 하루 새 카드 목표가 홈에 나와요. 홈 맨 위는 '기본'으로 두세요. 같은 곳의 '보기 가리고 먼저 떠올리기'도 켜 두길 추천해요.</li>
       <li><b>매일:</b> '학습 시작'을 누르세요. 오늘 복습할 카드가 먼저, 그다음 지금 라운드의 새 카드가 나와요. 라운드는 기출에 자주 나온 카드 100장씩이라, 앞 라운드일수록 시험에 잘 나와요. 복습은 그날 다 끝내고, 새 카드는 목표만큼만 하세요. 많이 하면 며칠 뒤 복습이 한꺼번에 몰려요.</li>
       <li><b>나눠서:</b> 한 번에 1시간보다 아침·저녁 15~20분씩이 더 오래 남아요.</li>
       <li><b>낯선 시대는 노트 먼저:</b> 핵심 노트에서 그 시대의 흐름(맨 위 화살표 줄)과 항목을 한 번 훑고 카드를 푸세요. 줄거리에 걸린 사실은 잘 안 잊혀요. 틀린 카드에서 '노트 보기'로 앞뒤를 확인하세요.</li>
@@ -211,8 +214,14 @@
       <li><b>예상 점수:</b> 57~79회 기출을 지금 기억으로 풀면 몇 점쯤인지(모르는 문제는 찍는다고 본 추정). 실제 문제가 더 어려워 조금 높게 나올 수 있어요.</li>
       <li><b>시대별 표:</b> 완료 / 학습 중 / 전체 카드 수. 누르면 그 시대만 학습해요.</li>
     </ul></details>
+    <details><summary>기본 · 심화</summary><ul>
+      <li><b>기본:</b> 57~79회 기출에 한 번이라도 나온 카드예요. 앞 시험(57~73회)으로 고른 기본 카드만 다 알아도 74~79회는 85점쯤 나왔어요(추정). 처음엔 기본만 하세요.</li>
+      <li><b>기본+심화:</b> 기출에 아직 안 나온 카드까지 모두. 다음 시험에 나오는 카드의 15%쯤은 앞 시험에 없던 카드라, 기본을 다 배운 뒤 넓히면 좋아요. 새 카드는 여전히 기본부터 나와요.</li>
+      <li>홈 맨 위에서 고르면 숫자, 라운드, 시대별 표, 시기·판별·기출형·자주 틀린 카드, 하루 목표가 모두 그 범위로 바뀌어요. 기록은 그대로라 언제든 바꿔도 돼요. 내가 가져온 카드는 기본에 들어가요.</li>
+      <li>같은 사실을 방향만 바꿔 묻던 카드(효종 → 하멜 표착 / 하멜 표착 → 효종 등)는 하나로 합쳤어요. 기록과 ✏️ 메모는 남은 카드로 옮겨졌어요.</li>
+    </ul></details>
     <details><summary>라운드</summary><ul>
-      <li>카드를 기출(57~79회)에 자주 나온 순으로 100장 안팎씩 묶었어요. 전체 시대 기준 기출 라운드 1~18이 기출에 나온 카드 전부이고, 그 뒤 심화 라운드는 기출에 안 나온 카드예요.</li>
+      <li>카드를 기출(57~79회)에 자주 나온 순으로 100장 안팎씩 묶었어요. 기본 라운드는 기출에 나온 카드, 기본+심화를 고르면 그 뒤에 나오는 심화 라운드는 기출에 안 나온 카드예요.</li>
       <li>'시대'에서 고른 시대 안에서 라운드를 나눠요. 전체를 고르면 모든 시대가 섞인 라운드, 고려만 고르면 고려 라운드예요.</li>
       <li>학습 시작은 지금 라운드의 새 카드를 내요. 다 풀면 다음 라운드로 넘어가요.</li>
       <li>틀린 카드만 다음 날부터 복습으로 따라와요. 맞힌 카드는 잊을 때쯤에만 다시 나와요. 그래서 100장을 매번 다시 풀지 않아도 돼요.</li>
@@ -248,7 +257,7 @@
     <header><button id="back">← 홈</button><h1>관리</h1></header>
     <h2>시험일</h2>
     <input type="date" id="examDate" aria-label="시험일">
-    <p class="muted">시험 일주일 전까지 기출에 나온 카드를 모두 한 번씩 배우도록 하루 새 카드 목표를 계산합니다. 다 배우면 나머지 카드로 계산해요.</p>
+    <p class="muted">시험 일주일 전까지 기본 카드(기출에 나온 카드)를 모두 한 번씩 배우도록 하루 새 카드 목표를 계산합니다. 기본+심화에서는 기본을 다 배우면 심화 카드로 계산해요.</p>
     <h2>학습 방식</h2>
     <label><input type="checkbox" id="recallFirst"> 보기 가리고 먼저 떠올리기</label>
     <p class="muted">답을 머릿속으로 먼저 떠올린 뒤 보기를 열어요. 보기에서 고르기보다 오래 기억됩니다. 버튼을 한 번 더 눌러야 해요.</p>

@@ -323,6 +323,17 @@ export function rounds(cards, hits, size = ROUND_SIZE) {
 }
 export const currentRound = (rs, progress) => rs.findIndex(r => r.cards.some(c => !entry(progress[c.id]).s));
 
+// Merged duplicate cards (merged.json: dropped id -> kept id): a record of the dropped card moves to the kept one; both → join(kept, dropped).
+export function mergeIds(obj, map, join = a => a) {
+  const out = { ...obj };
+  for (const [old, keep] of Object.entries(map)) {
+    if (!(old in out)) continue;
+    out[keep] = keep in out ? join(out[keep], out[old]) : out[old];
+    delete out[old];
+  }
+  return out;
+}
+
 // Past questions answered with the mean recall of their cards, otherwise a 1-in-5 guess.
 // era/pts: where the most points are still missed. ponytail: card recall stands in for the question, real ones are harder.
 export function examScore(questions, progress, day) {
