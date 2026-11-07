@@ -12,7 +12,9 @@ test('gichul.json: every question links existing cards and a known era', () => {
   for (const q of questions) {
     assert.ok(ERAS.includes(q.era), q.era);
     assert.ok(q.cards.length && q.cards.every(id => ids.has(id)), JSON.stringify(q));
+    assert.ok(q.n >= 57 && q.n <= 79 && q.q >= 1 && q.q <= 50 && typeof q.s === 'string' && q.s, JSON.stringify(q));
   }
+  assert.equal(new Set(questions.map(q => q.n * 100 + q.q)).size, questions.length);   // 실전 채점 finds each by 회차 + number
 });
 
 test('gichul.json: clue sets name a subject that has 판별 cards', () => {

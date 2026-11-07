@@ -199,9 +199,62 @@ export function counts(cards, progress, day) {
   return r;
 }
 
-// New cards per day so every card is introduced a week before the exam.
-export function dailyNew(fresh, today, exam) {
-  return Math.ceil(fresh / Math.max(1, exam - today - 7));
+// 시험 계획 — next exam (historyexam.go.kr, checked 2026-11-07): 제81회 심화 2026-11-28 (토) 10:00. Update with each release.
+export const NEXT_EXAM = { n: 81, date: '2026-11-28' };
+export const MOCK_MIN = 120;   // 실전 기출: 80 min on paper + 40 min marking and reading the misses
+// ponytail: fixed minutes per card; time real sessions if plans keep running long or short.
+export const MIN_FIRST = 1, MIN_REVIEW = 1 / 3;     // a new card's first round (with the explanation); one review
+const MIN_NEW = MIN_FIRST + 3 * MIN_REVIEW;         // a new card until the exam: first round + about 3 reviews
+const MIN_SEEN = 1.5 * MIN_REVIEW;                  // a card already learned: about 1.5 reviews before the exam
+
+export const weekDay = day => (day + 4) % 7;   // dayOf -> 0 = Sunday (day 0, 1970-01-01, was a Thursday)
+
+// Days from today to the exam: learn (new cards) until a week before, then final (no new cards), eve, exam.
+// Mocks: Sundays while learning, both weekend days in the final week. New cards share the learning days' time left after
+// mocks, in proportion to it (weekends get more); fit = how many fit once cards already learned are reviewed;
+// weHours = weekend hours a day that would fit them all with weekday hours unchanged.
+export function studyPlan({ day, exam, hours, fresh, seen = 0 }) {
+  const days = [];
+  for (let d = day; d <= exam; d++) {
+    const w = weekDay(d), weekend = w === 0 || w === 6;
+    const phase = d === exam ? 'exam' : d === exam - 1 ? 'eve' : d >= exam - 7 ? 'final' : 'learn';
+    const mock = phase === 'final' ? weekend : phase === 'learn' && w === 0;
+    days.push({ day: d, weekend, phase, mock, min: Math.round(60 * (weekend ? hours.we : hours.wd)), fresh: 0, n: null });
+  }
+  const learn = days.filter(x => x.phase === 'learn');
+  const free = x => Math.max(0, x.min - (x.mock ? MOCK_MIN : 0));
+  const total = learn.reduce((s, x) => s + free(x), 0);
+  const fit = Math.min(fresh, Math.max(0, Math.floor((total - seen * MIN_SEEN) / MIN_NEW)));
+  let acc = 0, given = 0;
+  for (const x of learn) { acc += free(x); const upto = total ? Math.round(fit * acc / total) : 0; x.fresh = upto - given; given = upto; }
+  const we = learn.filter(x => x.weekend);
+  const need = fresh * MIN_NEW + seen * MIN_SEEN - learn.filter(x => !x.weekend).reduce((s, x) => s + free(x), 0)
+    + we.filter(x => x.mock).length * MOCK_MIN;
+  return { days, fit, weHours: we.length ? Math.max(0, need / we.length / 60) : null };
+}
+
+// 실전 회차 for each mock day: newest past exams first, skipping ones done; the last mock gets the newest exam the app
+// has no data from (NEXT_EXAM.n - 1), kept as a test never seen.
+export function assignMocks(days, done, past) {
+  const unseen = NEXT_EXAM.n - 1;
+  const queue = past.filter(n => !done.has(n)).sort((a, b) => b - a);
+  const mocks = days.filter(x => x.mock);
+  mocks.forEach((x, i) => { x.n = i === mocks.length - 1 && !done.has(unseen) ? unseen : queue.shift() ?? null; });
+}
+
+// 마무리 주간: no new cards; the cards I'll have forgotten most by the exam first, weighted by how often past exams used
+// them. Cards already answered today wait (a same-day review barely helps).
+export function finalBatch(cards, progress, { day, exam, hits = new Map(), eras = null, skip = new Set(), size = BATCH_SIZE }) {
+  const loss = c => (1 - recall(progress[c.id], exam)) * (1 + (hits.get(c.id) ?? 0));
+  const list = cards.filter(c => { const p = entry(progress[c.id]); return p.s && p.last < day && inEras(c, eras) && !skip.has(c.id); })
+    .sort((a, b) => loss(b) - loss(a));
+  return oneEach(list, size);
+}
+
+// 실전 채점: wrong question numbers of exam n -> the past questions the app knows (subject asked) and their cards.
+export function mockMisses(questions, n, wrong) {
+  const qs = questions.filter(q => q.n === n && wrong.includes(q.q)).sort((a, b) => a.q - b.q);
+  return { qs, ids: new Set(qs.flatMap(q => q.cards)) };
 }
 
 export function createSession(batch) {
@@ -237,11 +290,17 @@ export function isStats(v) {
   return isObj(v) && typeof v.date === 'string' && isCount(v.count);
 }
 
+export const isHours = v => isObj(v) && [v.wd, v.we].every(h => typeof h === 'number' && h >= 0 && h <= 24);
+export const isMock = v => isObj(v) && Number.isInteger(v.n) && typeof v.date === 'string'
+  && (v.score === null || isCount(v.score)) && Array.isArray(v.wrong) && v.wrong.every(Number.isInteger);
+
 export function validateBackup(data) {
   return isObj(data) && isObj(data.progress)
     && (data.customCards === undefined || Array.isArray(data.customCards))
     && (data.stats === undefined || isStats(data.stats))
-    && (data.myNotes === undefined || isObj(data.myNotes));
+    && (data.myNotes === undefined || isObj(data.myNotes))
+    && (data.hours === undefined || isHours(data.hours))
+    && (data.mocks === undefined || (Array.isArray(data.mocks) && data.mocks.every(isMock)));
 }
 
 export const ORDER_GAP = 3;

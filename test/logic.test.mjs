@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { today, normalize, isShort, ERAS,
   hashId, parseQuizlet, mergeCards, pickChoices, orderLabel, makeOrderQuestion,
-  entry, review, recall, migrate, dayOf, dailyNew, MATURE, noteIndex, itemRecall,
+  entry, review, recall, migrate, dayOf, MATURE, noteIndex, itemRecall,
   makePhotoQuestion, project, MAP, MAP_VIEW,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
-  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds } from '../logic.js';
+  gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
+  weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -269,9 +270,67 @@ test('counts', () => {
   assert.ok(r.recall > 2 && r.recall < 3);
 });
 
-test('dailyNew: spread new cards to finish a week before the exam', () => {
-  assert.equal(dailyNew(300, 0, 37), 10);
-  assert.equal(dailyNew(300, 0, 5), 300);
+test('weekDay: 0 = Sunday; 2026-11-07 and the 81회 exam day are Saturdays', () => {
+  assert.equal(weekDay(dayOf(new Date(2026, 10, 7))), 6);
+  assert.equal(weekDay(dayOf(new Date(NEXT_EXAM.date + 'T00:00'))), 6);
+  assert.equal(weekDay(dayOf(new Date(2026, 10, 8))), 0);
+});
+
+const NOV7 = dayOf(new Date(2026, 10, 7)), NOV28 = dayOf(new Date(2026, 10, 28));
+
+test('studyPlan: learn until a week before, then final, eve, exam; mocks on learning Sundays and final weekends', () => {
+  const { days } = studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 3, we: 6 }, fresh: 100 });
+  assert.equal(days.length, 22);
+  const at = d => days[d - NOV7];
+  assert.deepEqual(days.filter(x => x.phase === 'learn').map(x => x.day), Array.from({ length: 14 }, (_, i) => NOV7 + i));
+  assert.equal(at(NOV28 - 7).phase, 'final');
+  assert.equal(at(NOV28 - 1).phase, 'eve');
+  assert.equal(at(NOV28).phase, 'exam');
+  assert.deepEqual(days.filter(x => x.mock).map(x => x.day - NOV7), [1, 8, 14, 15]);   // 11/8, 11/15 (Sun), 11/21–22 (final weekend)
+  assert.deepEqual([at(NOV7).min, at(NOV7 + 2).min], [360, 180]);
+});
+
+test('studyPlan: new cards follow free time (weekends more, mock days less), sum to what fits, none after learning', () => {
+  const hours = { wd: 3, we: 6 };
+  const all = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 300 });
+  assert.equal(all.fit, 300);
+  assert.equal(all.days.reduce((s, x) => s + x.fresh, 0), 300);
+  assert.ok(all.days.filter(x => x.phase !== 'learn').every(x => x.fresh === 0));
+  assert.deepEqual([all.days[0].fresh, all.days[1].fresh, all.days[2].fresh], [36, 24, 18]);   // Sat 360 · Sun 360−120 · Mon 180 of 3,000 min
+  const big = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773 });
+  assert.equal(big.fit, 1500);                     // 3,000 min / 2 min a card
+  assert.ok(big.weHours > 6 && big.weHours < 9);   // weekends would need ~8 h a day for all of them
+  assert.ok(studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773, seen: 1000 }).fit < 1500);   // reviews of learned cards take time
+  assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 0, we: 0 }, fresh: 50 }).fit, 0);
+  assert.ok(studyPlan({ day: NOV28 - 3, exam: NOV28, hours, fresh: 50 }).days.every(x => x.fresh === 0));
+});
+
+test('assignMocks: newest past exams first, done ones skipped; the last mock gets the unseen newest exam', () => {
+  const past = Array.from({ length: 23 }, (_, i) => 57 + i);
+  const plan = () => studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 3, we: 6 }, fresh: 0 }).days;
+  let days = plan();
+  assignMocks(days, new Set([79]), past);
+  assert.deepEqual(days.filter(x => x.mock).map(x => x.n), [78, 77, 76, NEXT_EXAM.n - 1]);
+  days = plan();
+  assignMocks(days, new Set([NEXT_EXAM.n - 1]), past);
+  assert.deepEqual(days.filter(x => x.mock).map(x => x.n), [79, 78, 77, 76]);
+});
+
+test('finalBatch: learned cards only, most exam-day loss first (forgetting × past-exam use), not twice a day', () => {
+  const day = 100, exam = 107;
+  const progress = { a: S(2, 90, 92), b: S(50, 90, 140), d: S(2, day, 102), e: S(2, 90, 92) };
+  const cs = ['a', 'b', 'c', 'd', 'e'].map(id => mk(id, id));
+  const hits = new Map([['e', 3]]);
+  assert.deepEqual(finalBatch(cs, progress, { day, exam, hits }).map(c => c.id), ['e', 'a', 'b']);
+  assert.deepEqual(finalBatch(cs, progress, { day, exam, hits, skip: new Set(['e']) }).map(c => c.id), ['a', 'b']);
+});
+
+test('mockMisses: wrong numbers of that exam -> its known questions in order and their cards', () => {
+  const qs = [{ n: 79, q: 12, s: '광종', cards: ['c'] }, { n: 79, q: 3, s: '동예', cards: ['a', 'b'] }, { n: 78, q: 3, s: 'x', cards: ['x'] }];
+  const m = mockMisses(qs, 79, [12, 3, 40]);
+  assert.deepEqual(m.qs.map(q => q.q), [3, 12]);
+  assert.deepEqual([...m.ids].sort(), ['a', 'b', 'c']);
+  assert.equal(mockMisses(qs, 80, [3]).ids.size, 0);
 });
 
 test('isStats', () => {
@@ -294,6 +353,9 @@ test('validateBackup: v2 and v1 backups', () => {
   assert.ok(!validateBackup({ progress: {}, myNotes: ['x'] }));
   assert.ok(!validateBackup({ progress: {}, customCards: {} }));
   assert.ok(!validateBackup({ progress: {}, stats: { date: '', count: 1.5 } }));
+  assert.ok(validateBackup({ progress: {}, hours: { wd: 3, we: 6.5 }, mocks: [{ n: 79, date: '2026-11-08', score: 72, wrong: [3, 12] }, { n: 80, date: '2026-11-22', score: null, wrong: [] }] }));
+  assert.ok(!validateBackup({ progress: {}, hours: { wd: 3 } }));
+  assert.ok(!validateBackup({ progress: {}, mocks: [{ n: 79, date: '2026-11-08', score: 72, wrong: ['3'] }] }));
 });
 
 test('ERAS has 통시대 before 기타', () => {

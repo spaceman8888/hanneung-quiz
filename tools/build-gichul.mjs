@@ -1,5 +1,5 @@
 // Builds gichul.json from the past-exam analysis (docs/content/gichul/57~79.json) and cards.json.
-// questions: past questions whose linked cards all exist (exam score, new-card priority).
+// questions: past questions whose linked cards all exist (exam score, new-card priority, 실전 채점: n = 회차, q = number, s = subject).
 // sets: 판별 questions' clue keywords for subjects that have 판별 cards (기출형 자료); `vague: true` = checked, doesn't point to the subject.
 // Run: node tools/build-gichul.mjs
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -7,7 +7,8 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 const cards = JSON.parse(readFileSync('cards.json', 'utf8'));
 const byId = new Map(cards.map(c => [c.id, c]));
 const dir = 'docs/content/gichul';
-const all = readdirSync(dir).filter(f => f.endsWith('.json')).sort().flatMap(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')));
+const all = readdirSync(dir).filter(f => f.endsWith('.json')).sort()
+  .flatMap(f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')).map(q => ({ ...q, n: parseInt(f, 10) })));   // n = 회차 (file name)
 const judge = cards.filter(c => c.type === '판별');
 const judged = new Set(judge.map(c => c.front));
 
@@ -20,7 +21,7 @@ const facts = q => {
   return [];
 };
 const questions = all.filter(q => cardEra(q))
-  .map(q => ({ era: cardEra(q), cards: [...new Set([...q.cards, ...facts(q).map(c => c.id)])] }));
+  .map(q => ({ era: cardEra(q), n: q.n, q: q.q, s: q.subject, cards: [...new Set([...q.cards, ...facts(q).map(c => c.id)])] }));
 
 const seen = new Set();
 const sets = [];
