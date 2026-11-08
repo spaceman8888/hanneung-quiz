@@ -75,12 +75,22 @@
   #notesBody td, #notesBody th, #guide td, #guide th { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
   #guide details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:8px 0; padding:10px 12px; } #guide summary { font-weight:600; }
   #guide li { word-break:keep-all; }
-  #dayTip { width:100%; text-align:left; font-size:15px; line-height:1.5; word-break:keep-all; border-left:4px solid var(--accent); margin:4px 0 12px; }
   .hide .key:not(.shown) { color:transparent; background:var(--line); border-radius:4px; }
-  #today { padding:14px 16px; } .todayHead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .todayHead button, #todayList button { padding:6px 10px; font-size:14px; white-space:nowrap; } .row > .small { flex:0 0 auto; }
-  #todayList { list-style:none; padding:0; margin:8px 0 0; } #todayList li { margin:8px 0; word-break:keep-all; } #todayList li.done { color:var(--muted); }
-  #todayList button { margin-left:6px; } #todayWarn { margin:8px 0 0; font-size:14px; word-break:keep-all; }
+  .hero .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-top:8px; }
+  .dday { font-size:30px; font-weight:800; color:var(--accent); } #pctText { margin:6px 0 2px; } #pctBar { height:12px; }
+  .go { display:block; font-size:19px; font-weight:700; padding:16px; margin:12px 0; border-radius:14px; }
+  .go small { display:block; font-weight:400; font-size:14px; opacity:.9; margin-top:2px; } .go small:empty { display:none; }
+  #todayList { list-style:none; padding:0; margin:4px 0; } #todayList li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); word-break:keep-all; }
+  #todayList li b { font-weight:600; } #todayList li span { color:var(--muted); font-size:15px; text-align:right; }
+  #todayList li.done, #todayList li.done span { color:var(--ok); } #todayList li.opt b { font-weight:400; color:var(--muted); }
+  #todayList .tag { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:0 6px; margin-left:4px; color:var(--muted); font-weight:400; }
+  #todayList button { padding:4px 10px; font-size:14px; white-space:nowrap; } #todayWarn { margin:8px 0 0; font-size:14px; word-break:keep-all; }
+  .chip { display:inline-block; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:4px 12px; font-size:14px; margin:8px 0; } .chip:empty { display:none; }
+  #more { margin:16px 0; border-top:1px solid var(--line); padding-top:8px; } #more > summary { font-weight:600; padding:10px 0; color:var(--muted); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .grid2 button { padding:10px 8px; font-size:15px; }
+  .cheerCard { text-align:center; margin-top:40px; } .cheerCard .big { font-size:26px; font-weight:800; margin:8px 0; } .streakBig { font-size:20px; font-weight:700; color:var(--accent); }
+  .cheerCard button { width:100%; }
+  .row > .small { flex:0 0 auto; }
   .inl { display:flex; gap:12px; margin:8px 0; } .inl label { display:flex; align-items:center; gap:6px; } .inl input { width:5.5em; }
   #planSum { word-break:keep-all; } #planTable { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
   #planTable td, #planTable th { border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; vertical-align:top; word-break:keep-all; }
@@ -96,32 +106,55 @@
   <p id="warn"></p>
 
   <section id="home">
-    <header><h1>한능검 암기 <small id="version" class="muted"></small></h1><span><button id="toGuide">가이드</button> <button id="toManage">관리</button></span></header>
-    <div class="row seg" id="scopeRow" role="group" aria-label="학습 범위"><button id="scopeBasic"></button><button id="scopeAll"></button></div>
-    <div class="card stats">
-      <div><b id="dueCount">0</b>오늘 복습</div>
-      <div><b id="newCount">0</b>새 카드</div>
-      <div><b id="doneCount">0</b>완료</div>
-      <div><b id="todayCount">0</b>오늘 푼 카드</div>
-    </div>
-    <div class="card" id="today">
-      <div class="todayHead"><b id="todayTitle">오늘 할 일</b><button id="toPlan">시험 계획 ›</button></div>
+    <div class="hero">
+      <div class="top"><span id="dday" class="dday">한능검 암기</span><span id="dayInfo" class="muted"></span></div>
+      <p id="pctText" class="muted"></p>
+      <progress id="pctBar" max="100" value="0" aria-label="오늘 진행률"></progress>
+      <button class="primary go" id="start"><span id="startLabel">학습 시작</span><small id="startSub"></small></button>
       <ul id="todayList"></ul>
       <p id="todayWarn" class="muted" hidden></p>
+      <p id="streak" class="chip"></p>
+      <p id="homeMsg" class="muted"></p>
     </div>
-    <button id="roundBtn" class="eraRow" aria-label="라운드 목록 열기"></button>
-    <p id="score" hidden></p>
-    <p id="recall" class="muted"></p>
-    <button id="dayTip" aria-label="오늘의 꿀팁 — 눌러서 꿀팁 모두 보기"></button>
-    <details id="eraPick"><summary id="eraSum">시대: 전체</summary><div id="eraBoxes" role="group" aria-label="시대 선택 (여러 개 가능)"></div></details>
-    <p><button class="primary" id="start">학습 시작</button></p>
-    <div class="row"><button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button></div>
-    <div class="row"><button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button><button id="notesBtn" hidden>핵심 노트</button></div>
-    <div class="row"><button id="chainBtn" hidden>기출형 문제</button><button id="weakBtn">자주 틀린 카드</button></div>
-    <div class="row"><button id="mockBtn">실전 채점</button></div>
-    <p id="homeMsg" class="muted"></p>
-    <p class="muted">시대별: 완료 / 학습 중 / 전체 · 누르면 그 시대 학습<br>완료 = 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 점점 넓혀 다시 나옵니다.</p>
-    <div id="eraTable"></div>
+    <details id="more"><summary>더보기</summary>
+      <div class="grid2">
+        <button id="toPlan">시험 계획</button><button id="mockBtn">실전 채점</button>
+        <button id="chainBtn" hidden>기출형 문제</button><button id="weakBtn">자주 틀린 카드</button>
+        <button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button>
+        <button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button>
+        <button id="notesBtn" hidden>핵심 노트</button><button id="toGuide">가이드</button>
+        <button id="toManage">관리 · 백업</button>
+      </div>
+      <h2>라운드</h2>
+      <button id="roundBtn" class="eraRow" aria-label="라운드 목록 열기"></button>
+      <h2>공부 범위</h2>
+      <div class="row seg" id="scopeRow" role="group" aria-label="학습 범위"><button id="scopeBasic"></button><button id="scopeAll"></button></div>
+      <h2>기록</h2>
+      <div class="card stats">
+        <div><b id="dueCount">0</b>오늘 복습</div>
+        <div><b id="newCount">0</b>새 카드</div>
+        <div><b id="doneCount">0</b>완료</div>
+        <div><b id="todayCount">0</b>오늘 맞힌 문제</div>
+      </div>
+      <p id="score" hidden></p>
+      <p id="recall" class="muted"></p>
+      <h2>시대별 공부</h2>
+      <details id="eraPick"><summary id="eraSum">시대: 전체</summary><div id="eraBoxes" role="group" aria-label="시대 선택 (여러 개 가능)"></div></details>
+      <p class="muted">시대를 고르면 위 연습 버튼이 그 시대 안에서만 문제를 내요. 큰 버튼은 늘 전체 시대예요. 아래 줄을 누르면 그 시대만 공부해요(완료 / 학습 중 / 전체).</p>
+      <div id="eraTable"></div>
+      <p class="muted">한능검 암기 <span id="version"></span></p>
+    </details>
+  </section>
+
+  <section id="cheer" hidden>
+    <div class="card cheerCard">
+      <p class="big">🎉 오늘 목표 달성!</p>
+      <p id="cheerStreak" class="streakBig"></p>
+      <p id="cheerStats"></p>
+      <p class="muted">더 풀면 나머지 복습이 줄어 내일이 가벼워져요.</p>
+      <p><button class="primary" id="cheerMore">여유 복습 계속하기</button></p>
+      <p><button id="cheerHome">홈으로</button></p>
+    </div>
   </section>
 
   <section id="study" hidden>
@@ -165,9 +198,9 @@
     <details id="planWhy"><summary>이 계획은 이렇게 짰어요</summary><ul>
       <li><b>시험:</b> 제81회 한국사능력검정시험은 2026년 11월 28일(토) 10시에 심화만 치러요(2026-11-07에 공식 누리집과 기사로 확인). 앱은 서버 없이 폰에서만 돌아가서 공식 누리집을 직접 읽지 못해요. 다음 시험 일정은 앱을 업데이트할 때 바꿔요.</li>
       <li><b>1단계 · 새 카드 (시험 8일 전까지):</b> 새 카드는 하루 공부 시간에 비례해 나눠요. 주말에 더 많이, 실전이 있는 날은 그만큼 적게 배워요. 새 카드 1장은 해설을 읽고 틀리면 다시 푸는 시간까지 약 1분 15초로 셈해요.</li>
-      <li><b>새 카드가 복습보다 먼저인 이유:</b> 학습 시작은 그날 목표만큼 새 카드를 먼저 내고, 그다음 틀린 적 있는 카드, 마지막으로 나머지 복습을 내요. 실제 기출(57~79회)과 기본 카드 1,773장으로 11/8~11/28을 시뮬레이션해 보니, 복습을 먼저 하면 시간이 복습에 묶여 1,200장쯤만 보고 약 89점이었어요. 새 카드를 먼저 하면 1,773장을 다 보고 약 95점이었어요(처음 볼 때 30%를 아는 경우, 추정). 공부 시간이 계획의 60%뿐이어도 73점과 79점으로 새 카드 먼저가 나았어요. 시험이 3주 앞이면 외운 카드를 90%로 지키는 것보다 한 번이라도 보는 게 점수에 더 커요. 밀린 복습은 마무리 주간에 시험날 기준으로 정리해요.</li>
+      <li><b>새 카드가 복습보다 먼저인 이유:</b> 홈의 큰 버튼은 그날 목표만큼 새 카드를 먼저 내고, 그다음 틀린 적 있는 카드, 마지막으로 나머지 복습을 내요. 실제 기출(57~79회)과 기본 카드 1,773장으로 11/8~11/28을 시뮬레이션해 보니, 복습을 먼저 하면 시간이 복습에 묶여 1,200장쯤만 보고 약 89점이었어요. 새 카드를 먼저 하면 1,773장을 다 보고 약 95점이었어요(처음 볼 때 30%를 아는 경우, 추정). 공부 시간이 계획의 60%뿐이어도 73점과 79점으로 새 카드 먼저가 나았어요. 시험이 3주 앞이면 외운 카드를 90%로 지키는 것보다 한 번이라도 보는 게 점수에 더 커요. 밀린 복습은 마무리 주간에 시험날 기준으로 정리해요.</li>
       <li><b>시간이 모자라면:</b> 새 카드는 기출에 자주 나온 순서로 나오니, 시간 안에 들어가는 만큼만 배우고 나머지는 미뤄요. 앱의 기출 연결로 추정하면, 자주 나온 1,200장을 시험날 90% 기억하면 약 83점, 기본 1,773장이면 약 92점이에요(실제 문제가 더 어려워 조금 높게 나온 값).</li>
-      <li><b>2단계 · 마무리 (마지막 7일):</b> 새 카드 없이 복습만 해요. 막판에 처음 본 카드는 복습할 시간이 모자라 오래 남지 않아요. 학습 시작이 시험날 가장 잊기 쉬운 카드부터 내요(기출에 자주 나온 카드 우선).</li>
+      <li><b>2단계 · 마무리 (마지막 7일):</b> 새 카드 없이 복습만 해요. 막판에 처음 본 카드는 복습할 시간이 모자라 오래 남지 않아요. 큰 버튼이 '마무리 학습'이 되어 시험날 가장 잊기 쉬운 카드부터 내요(기출에 자주 나온 카드 우선).</li>
       <li><b>실전 (주말):</b> 수험 가이드들은 개념을 외운 뒤 실제 기출을 풀어 자주 틀리는 곳을 메우라고 권해요. 80분 재고 풀기와 채점·오답 정리 40분을 합쳐 2시간으로 잡았어요. 1단계에는 일요일, 마무리 주에는 토·일요일에 해요. 가장 최근 회차는 앱 자료에 없는 처음 보는 시험이라 마지막 실전용으로 남겨 둬요.</li>
       <li><b>평일 3시간:</b> 한 번에 몰아서 하기보다 출근 전·점심·퇴근 후처럼 나눠서 하세요. 떠올리며 풀기와 나눠서 공부하기는 효과가 가장 큰 공부법으로 꼽혀요(Dunlosky 외, 2013). 전날은 가볍게 하고 푹 자세요. 자는 동안 기억이 굳어요.</li>
       <li>출처: <a href="https://www.historyexam.go.kr/" target="_blank" rel="noopener">한국사능력검정시험 누리집</a> · <a href="https://www.wikitree.co.kr/articles/1166490" target="_blank" rel="noopener">위키트리(제81회 일정·준비물)</a> · <a href="https://tilnote.io/pages/6aea052f010a5c47f5206336" target="_blank" rel="noopener">접수 일정 정리</a></li>
@@ -191,14 +224,14 @@
     <h2>이렇게 공부하세요</h2>
     <p class="muted">카드는 잊을 때쯤 다시 나와요. 매일 조금씩, 떠올려서 답하는 게 핵심이에요.</p>
     <ol>
-      <li><b>처음 한 번:</b> 홈 '오늘 할 일' → <b>시험 계획</b>에서 시험일과 평일·주말 하루 공부 시간을 정하세요. 남은 날을 1단계(새 카드)와 2단계(마무리)로 나누고, 날마다 새 카드 수와 실전 날을 정해 줘요. 홈 맨 위는 '기본'으로 두세요. 관리 → '보기 가리고 먼저 떠올리기'도 켜 두길 추천해요.</li>
-      <li><b>매일:</b> 홈 '오늘 할 일'을 위에서부터 하세요. '학습 시작'을 누르면 ① 오늘 목표만큼 새 카드(지금 라운드, 기출에 자주 나온 순) → ② 틀린 적 있는 카드의 복습 → ③ 나머지 복습 순서로 나와요. 시험까지 3주라 모든 카드를 한 번씩 먼저 보는 게 점수에 더 좋아요. ③이 남아도 괜찮아요. 마지막 7일 '마무리 학습'에서 시험날 잊기 쉬운 카드부터 다시 봐요. 라운드는 기출에 자주 나온 카드 100장씩이라, 앞 라운드일수록 시험에 잘 나와요.</li>
+      <li><b>처음 한 번:</b> 홈 아래 '더보기' → <b>시험 계획</b>에서 시험일과 평일·주말 하루 공부 시간을 정하세요. 남은 날을 1단계(새 카드)와 2단계(마무리)로 나누고, 날마다 새 카드 수와 실전 날을 정해 줘요. 더보기 → 관리에서 '보기 가리고 먼저 떠올리기'도 켜 두길 추천해요.</li>
+      <li><b>매일:</b> 홈의 큰 버튼(<b>오늘 공부 시작</b> / <b>이어서 하기</b>) 하나만 누르세요. ① 오늘 목표만큼 새 카드(기출에 자주 나온 순) → ② 틀린 적 있는 카드의 복습 → ③ 나머지 복습이 끊김 없이 이어져요. ①과 ②를 끝내면 오늘 100%이고 🔥 연속 기록이 하루 늘어요. 시험까지 3주라 모든 카드를 한 번씩 먼저 보는 게 점수에 더 좋아요. ③이 남아도 괜찮아요. 마지막 7일 '마무리 학습'에서 시험날 잊기 쉬운 카드부터 다시 봐요. 라운드는 기출에 자주 나온 카드 100장씩이라, 앞 라운드일수록 시험에 잘 나와요.</li>
       <li><b>나눠서:</b> 한 번에 몰아서 하기보다 출근 전·점심·퇴근 후 20~40분씩 나눠서 하면 더 오래 남아요.</li>
-      <li><b>주말 실전:</b> 계획에 '실전'이 있는 날, 공식 누리집의 기출 1회분을 종이에 80분 재고 풀고 정답표로 채점하세요. 홈 → <b>실전 채점</b>에 점수와 틀린 번호를 넣으면, 틀린 문항이 물은 것과 그 카드를 바로 풀 수 있어요. 가장 최근 회차는 마지막 주 실전용으로 아껴 두세요.</li>
+      <li><b>주말 실전:</b> (선택) 계획에 '실전'이 있는 날, 기출문제집이나 공식 누리집의 기출 1회분을 종이에 80분 재고 풀고 정답표로 채점하세요. 더보기 → <b>실전 채점</b>에 점수와 틀린 번호를 넣으면, 틀린 문항이 물은 것과 그 카드를 바로 풀 수 있어요. 가장 최근 회차는 마지막 주 실전용으로 아껴 두세요.</li>
       <li><b>낯선 시대는 노트 먼저:</b> 핵심 노트에서 그 시대의 흐름(맨 위 화살표 줄)과 항목을 한 번 훑고 카드를 푸세요. 줄거리에 걸린 사실은 잘 안 잊혀요. 틀린 카드에서 '노트 보기'로 앞뒤를 확인하세요.</li>
       <li><b>일주일에 한두 번:</b> 어느 정도 배운 시대로 '기출형 문제'를 푸세요. 시험처럼 이름 없이 자료만 보고 떠올리는 연습이에요. 시대를 여러 개 골라 섞어 풀면 비슷한 것(고려·조선 제도 등)을 구별하는 힘이 커져요. '자주 틀린 카드'도 함께 정리하세요.</li>
-      <li><b>점수 확인:</b> 홈의 예상 점수 아래 '점수 올리기 좋은 시대'를 먼저 공부하세요. 실전 점수가 예상 점수보다 많이 낮으면 기출형 문제를 늘리세요. 카드는 아는데 자료를 보고 알아보지 못한다는 뜻이에요.</li>
-      <li><b>마지막 일주일:</b> '학습 시작'이 저절로 '마무리 학습'으로 바뀌어요. 새 카드 없이 시험날 가장 잊기 쉬운 카드부터 나와요(기출에 자주 나온 카드 우선). 자주 틀린 카드·기출형도 함께 하세요. 전날은 가볍게 하고 푹 자세요. 자는 동안 기억이 굳어요.</li>
+      <li><b>점수 확인:</b> 더보기 → 기록의 '점수 올리기 좋은 시대'를 먼저 공부하세요. 실전 점수가 예상 점수보다 많이 낮으면 기출형 문제를 늘리세요. 카드는 아는데 자료를 보고 알아보지 못한다는 뜻이에요.</li>
+      <li><b>마지막 일주일:</b> 큰 버튼이 저절로 '마무리 학습'으로 바뀌어요. 새 카드 없이 시험날 가장 잊기 쉬운 카드부터 나와요(기출에 자주 나온 카드 우선). 자주 틀린 카드·기출형도 함께 하세요. 전날은 가볍게 하고 푹 자세요. 자는 동안 기억이 굳어요.</li>
     </ol>
     <h2>답할 때 지킬 것</h2>
     <p class="muted">답한 결과로 다음에 나올 날이 정해져요. 정직하게 답해야 간격이 맞아요.</p>
@@ -206,13 +239,12 @@
       <li>모르면 찍지 말고 <b>모르겠어요</b>. 찍어서 맞히면 아는 줄 알고 너무 늦게 다시 나와요.</li>
       <li><b>이미 알아요</b>는 확실할 때만. 누른 뒤 답을 골라야 확인돼요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.</li>
       <li>오래 고민해 맞힌 카드는 저절로 조금 일찍 다시 나와요. 서두르지 않아도 돼요.</li>
-      <li>틀리면 ✏️ 내 메모, 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 다른 문제 20개를 푼 뒤 다시 나와요(맞힐 때까지). 간격을 두고 다시 떠올려야 더 오래 남아요. 남은 문제가 20개보다 적으면 마지막에 나와요. 답하면 그 카드가 몇 번 나왔고 몇 번 맞히고 틀렸는지 보여요(관리 → 풀이 기록).</li>
+      <li>틀리면 ✏️ 내 메모, 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 다른 문제 20개를 푼 뒤 다시 나와요(맞힐 때까지). 간격을 두고 다시 떠올려야 더 오래 남아요. 남은 문제가 20개보다 적으면 마지막에 나와요. 답하면 그 카드가 몇 번 나왔고 몇 번 맞히고 틀렸는지 보여요(더보기 → 관리 → 풀이 기록).</li>
       <li><b>🧠 연상으로 외우기</b>를 누르면 소리가 비슷한 말과 엉뚱한 장면으로 엮은 연상이 나와요. 말장난은 기억 손잡이일 뿐 낱말의 뜻이나 유래가 아니에요.</li>
       <li><b>✏️ 메모</b>에 그 문제에 대한 나만의 연상이나 헷갈린 이유를 적어 두세요. 다음에 그 카드가 나오면 맞혀도 틀려도 맨 위에 보여요. 지우려면 비우고 저장하세요.</li>
-      <li>이상한 카드는 <b>신고</b>. 관리 → 신고한 카드에 모여요.</li>
+      <li>이상한 카드는 <b>신고</b>. 더보기 → 관리 → 신고한 카드에 모여요.</li>
     </ul>
     <h2 id="tipsHead">잘 외우는 꿀팁</h2>
-    <p class="muted">홈에 하루 하나씩 나와요. 눌러 보면 여기로 와요.</p>
     <ol id="tips">
       <li><b>읽지 말고 떠올리기.</b> 다시 읽으면 아는 느낌만 들어요. 책을 덮고 떠올린 만큼 남아요. 노트도 '가리고 떠올리기'로 보세요.</li>
       <li><b>키워드 2~3개로 기억하기.</b> 한능검은 자료 속 키워드로 대상을 알아보는 시험이에요. 예: 광종 — 노비안검법·과거제·광덕 연호.</li>
@@ -256,42 +288,41 @@
     </ul></details>
 
     <h2>화면 설명</h2>
-    <details><summary>홈 숫자</summary><ul>
-      <li><b>오늘 할 일:</b> 시험 계획으로 정한 오늘의 새 카드·복습·실전, 학습 시작이 내는 순서대로. 끝난 일에는 ✓가 붙어요. 시간 안에 새 카드를 다 못 배우면 몇 장까지 가능한지, 주말에 몇 시간이면 다 되는지 알려 줘요.</li>
-      <li><b>라운드 줄:</b> 지금 라운드, 그 라운드에서 푼 카드 수, 오답 수. 누르면 라운드 목록이 열려요.</li>
-      <li><b>오늘 복습:</b> 다시 볼 때가 된 카드</li>
-      <li><b>새 카드:</b> 아직 안 푼 카드</li>
+    <details><summary>홈 화면</summary><ul>
+      <li><b>D-day와 진행률:</b> 오늘 할 일 ①새 카드 목표 + ②틀린 카드 복습을 얼마나 했는지. ③나머지 복습과 실전은 여유분이라 넣지 않아요. 마무리 주간에는 오늘 시간에 맞춘 복습 수가 목표예요.</li>
+      <li><b>큰 버튼:</b> 오늘 계획대로 문제를 내요(늘 전체 시대). 버튼 아래 작은 글씨가 지금 단계예요. 단계가 바뀌면 문제 화면 위에 알려 줘요.</li>
+      <li><b>오늘 할 일:</b> ① ② ③과 실전(선택). 끝난 줄에는 ✓. 시간 안에 새 카드를 다 못 배우면 몇 장까지 가능한지 알려 줘요.</li>
+      <li><b>🔥 연속:</b> 오늘 목표(100%)를 채운 날이 며칠 이어졌는지. 하루를 건너뛰면 1부터 다시 세요. 목표를 채우면 축하 화면이 나오고, 이어서 더 풀 수 있어요.</li>
+      <li><b>더보기:</b> 시험 계획, 실전 채점, 연습 문제(기출형·자주 틀린 카드·시기·판별·순서·사진), 핵심 노트, 가이드, 관리·백업, 라운드, 공부 범위, 기록(숫자·예상 점수·기억률), 시대별 공부.</li>
+      <li><b>예상 점수:</b> 57~79회 기출을 지금 기억으로 풀면 몇 점쯤인지(모르는 문제는 찍는다고 본 추정). 실제 문제가 더 어려워 조금 높게 나올 수 있어요. 더보기 → 기록에 실전 점수와 점수 올리기 좋은 시대도 나와요.</li>
       <li><b>완료:</b> 3주 뒤에도 90% 이상 기억할 카드. 완료해도 간격을 넓혀 가며 다시 나와요.</li>
-      <li><b>지금 기억하는 카드 %:</b> 지금 기억하고 있을 카드 비율(추정)</li>
-      <li><b>예상 점수:</b> 57~79회 기출을 지금 기억으로 풀면 몇 점쯤인지(모르는 문제는 찍는다고 본 추정). 실제 문제가 더 어려워 조금 높게 나올 수 있어요. 실전 채점을 하면 최근 실전 점수가 함께 나와요.</li>
-      <li><b>시대별 표:</b> 완료 / 학습 중 / 전체 카드 수. 누르면 그 시대만 학습해요.</li>
     </ul></details>
     <details><summary>기본 · 심화</summary><ul>
       <li><b>기본:</b> 57~79회 기출에 한 번이라도 나온 카드예요. 앞 시험(57~73회)으로 고른 기본 카드만 다 알아도 74~79회는 85점쯤 나왔어요(추정). 처음엔 기본만 하세요.</li>
       <li><b>기본+심화:</b> 기출에 아직 안 나온 카드까지 모두. 다음 시험에 나오는 카드의 15%쯤은 앞 시험에 없던 카드라, 기본을 다 배운 뒤 넓히면 좋아요. 새 카드는 여전히 기본부터 나와요.</li>
-      <li>홈 맨 위에서 고르면 숫자, 라운드, 시대별 표, 시기·판별·기출형·자주 틀린 카드, 하루 목표가 모두 그 범위로 바뀌어요. 기록은 그대로라 언제든 바꿔도 돼요. 내가 가져온 카드는 기본에 들어가요.</li>
+      <li>더보기 → 공부 범위에서 고르면 숫자, 라운드, 시대별 표, 시기·판별·기출형·자주 틀린 카드, 하루 목표가 모두 그 범위로 바뀌어요. 기록은 그대로라 언제든 바꿔도 돼요. 내가 가져온 카드는 기본에 들어가요.</li>
       <li>같은 사실을 방향만 바꿔 묻던 카드(효종 → 하멜 표착 / 하멜 표착 → 효종 등)는 하나로 합쳤어요. 기록과 ✏️ 메모는 남은 카드로 옮겨졌어요.</li>
     </ul></details>
     <details><summary>라운드</summary><ul>
       <li>카드를 기출(57~79회)에 자주 나온 순으로 100장 안팎씩 묶었어요. 기본 라운드는 기출에 나온 카드, 기본+심화를 고르면 그 뒤에 나오는 심화 라운드는 기출에 안 나온 카드예요.</li>
       <li>'시대'에서 고른 시대 안에서 라운드를 나눠요. 전체를 고르면 모든 시대가 섞인 라운드, 고려만 고르면 고려 라운드예요.</li>
-      <li>학습 시작은 지금 라운드의 새 카드를 내요. 다 풀면 다음 라운드로 넘어가요.</li>
+      <li>큰 버튼은 지금 라운드의 새 카드를 내요. 다 풀면 다음 라운드로 넘어가요.</li>
       <li>틀린 카드만 다음 날부터 복습으로 따라와요. 맞힌 카드는 잊을 때쯤에만 다시 나와요. 그래서 100장을 매번 다시 풀지 않아도 돼요.</li>
       <li>라운드 목록에서 <b>풀기</b>는 그 라운드의 새 카드와 복습할 카드만, <b>오답만</b>은 그 라운드에서 틀린 적 있고 아직 완료 안 된 카드만 내요.</li>
     </ul></details>
     <details><summary>시대 고르기</summary><ul>
-      <li>'시대'를 펼쳐 하나 이상 고르면 모든 버튼이 그 시대 안에서만 문제를 내요.</li>
+      <li>더보기 → 시대별 공부에서 '시대'를 펼쳐 하나 이상 고르면 더보기의 연습 버튼이 그 시대 안에서만 문제를 내요. 홈의 큰 버튼은 늘 전체 시대예요.</li>
       <li>여러 개 고르면 그 시대들의 카드가 섞여 나와요.</li>
       <li>앱을 다시 열면 '전체'로 돌아가요.</li>
     </ul></details>
     <details><summary>문제 종류</summary><ul>
-      <li><b>학습 시작:</b> 모든 종류의 카드</li>
+      <li><b>큰 버튼 (오늘 공부 시작):</b> 모든 종류의 카드, 오늘 계획 순서대로</li>
       <li><b>시기 맞히기:</b> 사건 → 어느 왕·정부 때</li>
       <li><b>보기 판별:</b> 인물·제도 이름 → 옳은 설명 고르기</li>
       <li><b>기출형 문제:</b> (가) 자료 → (가)에 대한 옳은 설명. 답한 뒤 (가)가 무엇인지 알려 줘요. 완료한 판별 카드는 학습 중에도 절반쯤 이렇게 나와요.</li>
       <li><b>자주 틀린 카드:</b> 틀린 적 있고 아직 완료 안 된 카드, 많이 틀린 순</li>
       <li><b>실전 채점:</b> 종이로 푼 기출의 점수와 틀린 번호 기록. 57~79회는 틀린 문항마다 무엇을 물었는지 보여 주고, 그 카드만 풀 수 있어요.</li>
-      <li><b>마무리 학습:</b> 시험 7일 전부터 학습 시작이 바뀐 것. 배운 카드 중 시험날 기억이 가장 약할 카드부터, 하루 한 번씩.</li>
+      <li><b>마무리 학습:</b> 시험 7일 전부터 큰 버튼이 바뀐 것. 배운 카드 중 시험날 기억이 가장 약할 카드부터, 하루 한 번씩.</li>
       <li><b>순서 문제·사진 고르기:</b> 연표와 문화유산 감각 연습. 복습 일정에는 반영되지 않아요.</li>
       <li><b>핵심 노트:</b> 시대 흐름과 항목별 설명, ⚠ 헷갈리는 점, 🔑 외우는 법. '가리고 떠올리기'를 켜면 핵심어를 가려요. 항목마다 그 카드만 풀 수 있어요.</li>
     </ul></details>
@@ -302,7 +333,7 @@
       <li><b>신고한 카드·완료 카드:</b> 확인하고 해제하거나 처음부터 다시 배우기</li>
     </ul></details>
     <details><summary>학습 기록은 어디에?</summary>
-      <p>이 휴대폰 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 관리 → 기록 백업 → 내보내기로 파일을 받아 두세요. ✏️ 메모, 시험 계획, 실전 기록도 함께 담겨요. 새 휴대폰에서는 불러오기로 이어서 할 수 있어요.</p>
+      <p>이 휴대폰 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 더보기 → 관리 → 기록 백업 → 내보내기로 파일을 받아 두세요. ✏️ 메모, 시험 계획, 실전 기록, 🔥 연속 기록도 함께 담겨요. 새 휴대폰에서는 불러오기로 이어서 할 수 있어요.</p>
     </details>
   </section>
 

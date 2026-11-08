@@ -6,7 +6,7 @@ const storage = (() => { try { return localStorage; } catch { return null; } })(
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const shapes = { deep: v => typeof v === 'boolean', progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean', myNotes: isObj,
-  hours: L.isHours, mocks: v => Array.isArray(v) && v.every(L.isMock) };
+  hours: L.isHours, mocks: v => Array.isArray(v) && v.every(L.isMock), streak: L.isStreak };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -38,6 +38,7 @@ let recallFirst = load('recallFirst', false);
 let deep = load('deep', false);   // study range: false = 기본 (cards past exams used) + my imported cards, true = 기본+심화
 let myNotes = load('myNotes', {});   // card id -> the learner's own note
 let hours = load('hours', { wd: 3, we: 6 });   // 시험 계획: study hours a weekday / a weekend day
+let streak = load('streak', { last: '', n: 0 });   // 🔥 days in a row the day's goal was reached
 let mocks = load('mocks', []);   // 실전 채점: { n: 회차, date, score (null = not given), wrong: question numbers }
 let mergedIds = {};   // merged.json: merged duplicate card id -> the card kept
 // Records of merged duplicate cards move to the kept card: the stronger memory wins, both notes are kept.
@@ -50,6 +51,7 @@ let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   /
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
+let lastStep = 0;   // 오늘 할 일 step the last batch was in (1 new · 2 missed reviews · 3 other reviews · 4 free)
 let hits = new Map(), roundSel = null, lastRound = -1, roundNote = '';   // gichul hits per card; the round 풀기/오답만 is on; round 학습 시작 was in
 let doneCount = 0, busy = false, timer = null;
 const cancelTimer = () => { clearTimeout(timer); timer = null; busy = false; };
@@ -61,12 +63,17 @@ const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 �
 const allCards = () => [...baseCards, ...custom];
 const studyCards = () => (deep || !hits.size ? allCards() : [...baseCards.filter(c => hits.has(c.id)), ...custom]);
 const show = id => {
-  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock', 'cheer'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
-const todayCount = () => (stats.date === L.today() ? stats.count : 0);
-const todayFresh = () => (stats.date === L.today() ? stats.fresh ?? 0 : 0);
+// Today's counts: count (right answers), ans (all answers), fresh (new cards graded), rev (reviews graded), weakRev (of them,
+// cards I had missed), cheered (goal reached). A new day starts from zero.
+const st = () => (stats.date === L.today() ? stats : { date: L.today(), count: 0, fresh: 0 });
+const bump = (...keys) => { const s = { ...st() }; for (const k of keys) s[k] = (s[k] ?? 0) + 1; stats = s; save('stats', stats); };
+const todayCount = () => st().count;
+const todayFresh = () => st().fresh ?? 0;
+const yesterday = () => L.today(new Date(Date.now() - 864e5));
 const examDay = () => (exam ? L.dayOf(new Date(exam + 'T00:00')) : null);
 const byIds = () => mode === 'note' || mode === 'mock';   // a fixed set of cards (note item, 실전 misses): no era filter
 const inFinal = (day = L.dayOf()) => { const ex = examDay(); return ex !== null && day >= ex - 7 && day < ex; };   // 마무리 주간
@@ -75,7 +82,6 @@ const byDate = list => [...list].sort((a, b) => b.date.localeCompare(a.date));
 const fmtDay = d => { const t = new Date(d * 864e5); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}(${'일월화수목금토'[L.weekDay(d)]})`; };
 const fmtHours = min => `${+(min / 60).toFixed(1)}시간`;
 const fmtDate = date => date.slice(5).split('-').map(Number).join('/');   // '2026-11-08' -> '11/8'
-const PHASE = { learn: '1단계 새 카드', final: '2단계 마무리', eve: '시험 전날', exam: '시험 날' };
 
 // The plan from today. New cards are counted as at the start of today, so today's target holds while I study.
 function planNow() {
@@ -103,37 +109,71 @@ function shortNote(p) {
   return `⚠ 이 시간이면 시험 8일 전까지 새 카드 ${p.start}장 중 약 ${p.fit}장(${roundAt(p.fit)}라운드까지)을 배울 수 있어요. 기출에 자주 나온 카드부터라 그만큼이 우선이에요.${all}`;
 }
 
-function renderToday(weakEra) {
-  const day = L.dayOf(), p = planNow(), list = $('todayList');
+const STEP = ['', '1. 새 카드', '2. 틀린 카드 복습', '3. 나머지 복습', '자유 학습'];
+
+// Today on home: the plan's day, what is left in each step, the step the big button is on, the day's progress.
+function todayState() {
+  const p = planNow();
+  if (!p) return null;
+  const day = L.dayOf(), t = p.days[0], s = st(), e = c => L.entry(progress[c.id]);
+  const cs = studyCards(), due = cs.filter(c => e(c).s && e(c).due <= day);
+  const weakDue = due.filter(c => e(c).miss > 0 && e(c).s < L.MATURE).length, restDue = due.length - weakDue;
+  const newDone = s.fresh ?? 0, newLeft = t.phase === 'learn' ? Math.max(0, t.fresh - newDone) : 0;
+  const g = L.dayGoal({ phase: t.phase, target: t.fresh, newDone, weakDue, weakDone: s.weakRev ?? 0, revDone: s.rev ?? 0,
+    min: t.min, seen: cs.filter(c => e(c).s).length });
+  const step = t.phase !== 'learn' ? 0 : newLeft ? 1 : weakDue ? 2 : restDue ? 3 : 4;
+  return { p, t, newDone, newLeft, weakDue, restDue, step, ...g, pct: g.goal ? Math.min(100, Math.floor(100 * g.done / g.goal)) : 100 };
+}
+
+// The day's goal reached for the first time (after answering something today): 🔥 +1. True only then.
+function reachGoal(ts) {
+  if (!ts || ts.t.phase === 'exam' || ts.pct < 100 || !st().ans || st().cheered) return false;
+  stats = { ...st(), cheered: true };
+  save('stats', stats);
+  streak = L.bumpStreak(streak, L.today(), yesterday());
+  save('streak', streak);
+  return true;
+}
+
+const newCount = ts => (ts.newDone > ts.t.fresh ? `${ts.t.fresh} / ${ts.t.fresh} +${ts.newDone - ts.t.fresh}` : `${ts.newDone} / ${ts.t.fresh}`);
+const stepText = ts => (ts.step === 1 ? `1. 새 카드 ${newCount(ts)}장` : ts.step === 2 ? `2. 틀린 카드 복습 ${ts.weakDue}장 남음`
+  : ts.step === 3 ? `3. 나머지 복습 ${ts.restDue}장 · 여유 되면` : '오늘 할 일 끝! 더 풀면 내일이 가벼워져요');
+
+function renderToday(ts) {
+  const list = $('todayList');
   $('todayWarn').hidden = true;
-  if (!p) {
-    $('todayTitle').textContent = '오늘 할 일';
-    const li = el('li', examDay() === null ? '시험일과 평일·주말 공부 시간을 정하면 남은 날을 나눠 드려요.' : '시험일이 지났어요. 다음 시험일을 정해 주세요.');
-    li.append(btn('시험 계획 정하기', renderPlan));
+  if (!ts) {
+    const li = el('li', null);
+    li.append(el('b', examDay() === null ? '시험일과 하루 공부 시간을 정하면 오늘 할 일을 짜 드려요.' : '시험일이 지났어요. 다음 시험일을 정해 주세요.'), btn('시험 계획', renderPlan));
     return list.replaceChildren(li);
   }
-  const t = p.days[0], done = mocks.find(m => m.date === L.today());
-  $('todayTitle').textContent = `D-${examDay() - day} · ${t.weekend ? '주말' : '평일'} ${fmtHours(t.min)} · ${PHASE[t.phase]}`;
-  const items = [];   // [text, done?, button]
-  if (t.phase === 'exam') items.push(['오늘 시험! 10:00 시작 · 신분증·수험표·컴퓨터용 사인펜 · 입실 시간은 수험표에서 확인']);
-  else {
-    if (t.phase === 'learn') {   // the order 학습 시작 follows: today's new cards, reviews of missed cards, the other reviews
-      const k = todayFresh(), e = c => L.entry(progress[c.id]);
-      const due = studyCards().filter(c => e(c).s && e(c).due <= day), miss = due.filter(c => e(c).miss > 0 && e(c).s < L.MATURE).length;
-      items.push(k >= t.fresh ? [`✓ 1. 새 카드 ${k} / ${t.fresh}장`, true] : [`1. 새 카드 ${k} / ${t.fresh}장 · 약 ${Math.ceil((t.fresh - k) * L.MIN_FIRST)}분`]);
-      items.push(miss ? [`2. 틀린 적 있는 카드 복습 ${miss}장 · 약 ${Math.ceil(miss * L.MIN_REVIEW)}분`] : ['✓ 2. 틀린 카드 복습 끝', true]);
-      if (due.length > miss) items.push([`3. 나머지 복습 ${due.length - miss}장 — 시간 남으면 (못 해도 마무리 주간에 다시 봐요)`]);
-    }
-    if (t.phase === 'final') items.push(['마무리 학습: 새 카드 없이 시험날 잊기 쉬운 카드부터']);
-    if (done) items.push([`✓ 실전 ${done.n}회 ${done.score ?? '-'}점`, true]);
-    else if (t.mock) items.push([`실전 기출 ${t.n ?? ''}회 · 80분 재고 풀고 채점 (약 2시간)`, false, btn('채점하기', renderMock)]);
-    items.push([t.phase === 'eve' ? '가볍게 1시간: 자주 틀린 카드, 노트 흐름(화살표 줄)만. 수험표·신분증·사인펜 챙기고 일찍 자기'
-      : t.phase === 'final' ? `남는 시간: 자주 틀린 카드 · 기출형 문제${weakEra ? ` · ${weakEra} 노트` : ''}` : '남는 시간: 기출형 문제 → 자주 틀린 카드']);
-  }
-  list.replaceChildren(...items.map(([text, ok, b]) => { const li = el('li', text, ok ? 'done' : null); if (b) li.append(b); return li; }));
-  const warnText = t.phase === 'learn' ? shortNote(p) : '';
+  const { t } = ts, m = mocks.find(x => x.date === L.today()), items = [];   // [label, right side, class, button]
+  if (t.phase === 'exam') items.push(['오늘 시험! 10:00 시작', '신분증 · 수험표 · 사인펜']);
+  if (t.phase === 'learn') items.push(
+    ['1. 새 카드', newCount(ts), ts.newLeft ? '' : 'done'],
+    ['2. 틀린 카드 복습', ts.weakDue ? `${ts.weakDue}장` : '끝', ts.weakDue ? '' : 'done'],
+    ['3. 나머지 복습', ts.restDue ? `${ts.restDue}장 · 여유 되면` : '끝', ts.restDue ? 'opt' : 'done']);
+  if (t.phase === 'final' || t.phase === 'eve') items.push([t.phase === 'eve' ? '가볍게 1시간 복습' : '마무리 학습', `${ts.done} / ${ts.goal}`, ts.done >= ts.goal ? 'done' : '']);
+  if (t.phase === 'eve') items.push(['수험표 · 신분증 · 사인펜 챙기고 일찍 자기', '', 'opt']);
+  if (m) items.push([`실전 ${m.n}회`, `${m.score ?? '-'}점`, 'done']);
+  else if (t.mock) items.push([`실전 기출 ${t.n ?? ''}회`, '책이 있으면', 'opt', btn('채점하기', renderMock)]);
+  list.replaceChildren(...items.map(([label, right, cls, b]) => {
+    const li = el('li', null, cls || null), name = el('b', (cls === 'done' ? '✓ ' : '') + label);
+    if (label.startsWith('실전') && !m) name.append(el('span', '선택', 'tag'));
+    li.append(name, el('span', right));
+    if (b) li.append(b);
+    return li;
+  }));
+  const warnText = t.phase === 'learn' ? shortNote(ts.p) : '';
   $('todayWarn').hidden = !warnText;
   $('todayWarn').textContent = warnText;
+}
+
+function renderCheer() {
+  const s = st();
+  $('cheerStreak').textContent = `🔥 ${L.streakNow(streak, L.today(), yesterday())}일 연속 목표 달성`;
+  $('cheerStats').textContent = `오늘 ${s.ans ?? 0}문제 · 정답률 ${Math.round(100 * s.count / Math.max(1, s.ans ?? 0))}% · 새 카드 ${s.fresh ?? 0}장 · 복습 ${s.rev ?? 0}장`;
+  show('cheer');
 }
 
 function renderPlan() {
@@ -227,6 +267,18 @@ const eraNote = () => { const e = selEras(); return !e.length ? '' : ' · ' + (e
 
 function renderHome() {
   cancelTimer();
+  const ts = todayState(), ex = examDay();
+  reachGoal(ts);
+  const final = ts && (ts.t.phase === 'final' || ts.t.phase === 'eve'), started = (st().ans ?? 0) > 0;
+  $('dday').textContent = !ts ? '한능검 암기' : ts.t.phase === 'exam' ? 'D-DAY' : `D-${ex - L.dayOf()}`;
+  $('dayInfo').textContent = ts ? `${fmtDay(L.dayOf())} · ${ts.t.phase === 'exam' ? '시험 날' : `오늘 ${fmtHours(ts.t.phase === 'eve' ? 60 : ts.t.min)}`}` : '';
+  $('pctBar').hidden = !ts || ts.t.phase === 'exam';
+  $('pctBar').value = ts?.pct ?? 0;
+  $('startLabel').textContent = !ts || ts.t.phase === 'exam' ? '학습 시작' : started ? '이어서 하기' : final ? '마무리 학습 시작' : '오늘 공부 시작';
+  $('startSub').textContent = !ts ? '' : ts.t.phase === 'learn' ? stepText(ts) : final ? `시험날 잊기 쉬운 카드부터 · ${ts.done} / ${ts.goal}장` : '';
+  renderToday(ts);
+  const sn = L.streakNow(streak, L.today(), yesterday());
+  $('streak').textContent = !ts ? '' : st().cheered ? `🔥 ${sn}일 연속 목표 달성` : sn ? `🔥 ${sn}일 연속 · 오늘 채우면 ${sn + 1}일` : '🔥 오늘 목표를 채우면 연속 기록이 시작돼요';
   const eras = selEras();
   $('eraSum').textContent = '시대: ' + (eras.join(', ') || '전체');
   const day = L.dayOf();
@@ -253,10 +305,8 @@ function renderHome() {
       + (m ? `\n실전 최근: ${m.n}회 ${m.score}점 (${fmtDate(m.date)})` : '')
       + (e.pts >= 0.5 ? `\n점수 올리기 좋은 시대: ${e.era} +${Math.round(e.pts)}점` : '');
   }
-  renderToday(e?.pts >= 0.5 ? e.era : null);
-  $('start').textContent = inFinal(day) ? '마무리 학습 시작' : '학습 시작';
-  const tips = $('tips').children;
-  $('dayTip').textContent = '💡 오늘의 꿀팁: ' + tips[day % tips.length].textContent;
+  $('pctText').textContent = [!ts || ts.t.phase === 'exam' ? '' : st().cheered ? '🎉 오늘 목표 달성!' : `오늘 ${ts.pct}% 완료`,
+    e ? `예상 점수 약 ${Math.round(e.score)}점` : ''].filter(Boolean).join(' · ');
   $('dueCount').textContent = n.due;
   $('newCount').textContent = n.fresh;
   $('doneCount').textContent = n.done;
@@ -318,6 +368,7 @@ function enterMode(m) {
   noteFrom = false;   // a new session replaces the one a note was opened from
   practiced = new Set();
   lastRound = -1;
+  lastStep = 0;
   $('homeMsg').textContent = '';
   doneCount = 0;
   session = null;   // misses waiting from another mode don't follow into this one
@@ -332,18 +383,25 @@ function startBatch() {
   const day = L.dayOf();
   let round = null;
   $('roundMsg').textContent = roundNote = '';
-  const final = mode === 'normal' && inFinal(day);
+  const final = mode === 'normal' && inFinal(day), ts = mode === 'normal' ? todayState() : null;
+  if (session && reachGoal(ts)) return renderCheer();   // the goal just reached: celebrate between batches
+  const msgs = [];
   if (final) roundNote = ' · 마무리';
   else if (mode === 'normal') {
     const rs = eraRounds(), cur = L.currentRound(rs, progress);
-    if (lastRound >= 0 && cur !== lastRound) $('roundMsg').textContent = `🎉 ${roundName(rs, lastRound)} 완료! 틀린 ${L.counts(rs[lastRound].cards, progress, day).weak}장은 복습으로 다시 나와요.`;
+    if (lastRound >= 0 && cur !== lastRound) msgs.push(`🎉 ${roundName(rs, lastRound)} 완료!`);
     lastRound = cur;
     if (cur >= 0) { round = new Set(rs[cur].cards.map(c => c.id)); roundNote = ` · ${roundName(rs, cur)}`; }
+    if (ts?.step) {
+      if (lastStep && ts.step > lastStep) msgs.push(`✓ ${STEP[lastStep]} 끝! 이제 ${STEP[ts.step]}`);
+      lastStep = ts.step;
+      roundNote = ` · ${STEP[ts.step]}`;
+    }
   }
+  $('roundMsg').textContent = msgs.join(' ');
   const hold = new Set(session?.later.map(x => x.card.id) ?? []);   // misses waiting their 20 questions
   const skip = new Set([...practiced, ...hold]);
-  const t = mode === 'normal' && !final ? planNow()?.days[0] : null;
-  const newFirst = t?.phase === 'learn' ? Math.max(0, t.fresh - todayFresh()) : 0;   // today's new cards before reviews
+  const newFirst = final ? 0 : ts?.newLeft ?? 0;   // today's new cards before reviews
   const batch = final ? L.finalBatch(studyCards(), progress, { day, exam: examDay(), hits, eras, skip })
     : mode === 'round' ? L.buildBatch(roundSel.cards.filter(c => L.entry(progress[c.id]).due <= day), progress, { day, eras, skip: hold })   // due + new only
     : mode === 'roundWeak' ? L.weakBatch(roundSel.cards, progress, { day, skip })
@@ -413,7 +471,8 @@ function onAnswer(correct, button) {
     session.saved.add(id);
   } else save('progress', progress);
   reveal?.();   // 모르겠어요 before opening the options: still show them, marked
-  if (correct) { bumpStats(); doneCount++; }
+  bump('ans', ...(correct ? ['count'] : []));
+  if (correct) doneCount++;
   button?.classList.add(correct ? 'ok' : 'bad');
   for (const b of $('choices').children) {
     if (b.dataset.choice === card.back) { b.classList.add('ok'); continue; }
@@ -527,21 +586,16 @@ function noteItem(it, day, open) {
 }
 
 function grade(card, g) {
-  const isNew = !L.entry(progress[card.id]).s;
+  const p = L.entry(progress[card.id]);
   progress[card.id] = L.review(progress[card.id], g, L.dayOf());
   save('progress', progress);
-  if (isNew) { stats = { ...stats, date: L.today(), count: todayCount(), fresh: todayFresh() + 1 }; save('stats', stats); }
+  bump(...(!p.s ? ['fresh'] : p.miss > 0 && p.s < L.MATURE ? ['rev', 'weakRev'] : ['rev']));
 }
 
 // What a wrong option actually belongs to, so every miss teaches the distinction.
 function ownerOf(card, choice) {
   const o = L.ownerCard(card, choice, allCards());
   return card.type === '사진' ? o?.period : o?.front;
-}
-
-function bumpStats() {
-  stats = { ...stats, date: L.today(), count: todayCount() + 1, fresh: todayFresh() };
-  save('stats', stats);
 }
 
 let orderQ = null;
@@ -738,7 +792,7 @@ $('clearCustomBtn').onclick = () => {
 };
 
 $('exportBtn').onclick = () => {
-  const data = { version: 4, progress, customCards: custom, stats, exam, myNotes, hours, mocks };
+  const data = { version: 5, progress, customCards: custom, stats, exam, myNotes, hours, mocks, streak };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `hanneung-backup-${L.today()}.json`;
@@ -764,9 +818,10 @@ $('backupFile').onchange = async e => {
   myNotes = data.myNotes ?? myNotes;
   hours = data.hours ?? hours;
   mocks = data.mocks ?? mocks;
+  streak = data.streak ?? streak;
   mergeRecords();
   save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam); save('myNotes', myNotes);
-  save('hours', hours); save('mocks', mocks);
+  save('hours', hours); save('mocks', mocks); save('streak', streak);
   $('backupMsg').textContent = '불러오기 완료';
 };
 
@@ -793,7 +848,9 @@ $('dlPhotos').onclick = async () => {
   for (let i = 0; i < imgs.length; i += 4) await Promise.all(imgs.slice(i, i + 4).map(one));
   $('dlMsg').textContent = failed ? `${imgs.length - failed}장 받음, ${failed}장 실패 — 연결을 확인하고 다시 눌러 주세요.` : `완료 — ${imgs.length}장, 오프라인에서도 사진이 보여요.`;
 };
-$('start').onclick = () => enterMode('normal');
+$('start').onclick = () => { setEras([]); enterMode('normal'); };   // the big button: today's plan, all eras
+$('cheerMore').onclick = () => startBatch();
+$('cheerHome').onclick = goHome;
 $('roundBtn').onclick = renderRounds;
 $('scopeBasic').onclick = () => { deep = false; save('deep', deep); renderHome(); };
 $('scopeAll').onclick = () => { deep = true; save('deep', deep); renderHome(); };
@@ -817,7 +874,6 @@ $('quit').onclick = goHome;
 $('toManage').onclick = renderManage;
 $('toGuide').onclick = () => { show('guide'); scrollTo(0, 0); };
 $('guideBack').onclick = goHome;
-$('dayTip').onclick = () => { show('guide'); $('tipsHead').scrollIntoView(); };
 $('back').onclick = goHome;
 window.onpopstate = () => {
   if (noteFrom) { noteFrom = false; show('study'); }

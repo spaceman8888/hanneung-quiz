@@ -7,7 +7,7 @@ import { today, normalize, isShort, ERAS,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
   gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
-  RETRY_GAP, current, logShown, logAnswer, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
+  RETRY_GAP, current, logShown, logAnswer, dayGoal, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -336,6 +336,27 @@ test('studyPlan: new cards follow free time (weekends more, mock days less), sum
   assert.ok(studyPlan({ day: NOV28 - 3, exam: NOV28, hours, fresh: 50 }).days.every(x => x.fresh === 0));
 });
 
+test('dayGoal: learn = new target + missed reviews (start of day); other reviews extra; final = reviews the hours hold', () => {
+  assert.deepEqual(dayGoal({ phase: 'learn', target: 158, newDone: 58, weakDue: 7, weakDone: 3 }), { goal: 168, done: 61 });
+  assert.deepEqual(dayGoal({ phase: 'learn', target: 10, newDone: 25, weakDue: 0, weakDone: 0 }), { goal: 10, done: 10 });   // extra new cards don't pass 100%
+  assert.deepEqual(dayGoal({ phase: 'final', min: 180, seen: 2000, revDone: 100 }), { goal: 540, done: 100 });
+  assert.deepEqual(dayGoal({ phase: 'final', min: 180, seen: 300, revDone: 400 }), { goal: 300, done: 300 });
+  assert.deepEqual(dayGoal({ phase: 'eve', min: 180, seen: 2000 }), { goal: 180, done: 0 });   // one light hour
+  assert.deepEqual(dayGoal({ phase: 'exam' }), { goal: 0, done: 0 });
+});
+
+test('bumpStreak / streakNow: goal days in a row; a missed day starts over; twice a day counts once', () => {
+  let s = { last: '', n: 0 };
+  s = bumpStreak(s, '2026-11-08', '2026-11-07');
+  assert.deepEqual(s, { last: '2026-11-08', n: 1 });
+  assert.equal(bumpStreak(s, '2026-11-08', '2026-11-07'), s);
+  s = bumpStreak(s, '2026-11-09', '2026-11-08');
+  assert.equal(s.n, 2);
+  assert.equal(streakNow(s, '2026-11-10', '2026-11-09'), 2);   // today not yet reached: still alive
+  assert.equal(streakNow(s, '2026-11-11', '2026-11-10'), 0);   // a day missed
+  assert.deepEqual(bumpStreak(s, '2026-11-11', '2026-11-10'), { last: '2026-11-11', n: 1 });
+});
+
 test('assignMocks: newest past exams first, done ones skipped; the last mock gets the unseen newest exam', () => {
   const past = Array.from({ length: 23 }, (_, i) => 57 + i);
   const plan = () => studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 3, we: 6 }, fresh: 0 }).days;
@@ -386,6 +407,8 @@ test('validateBackup: v2 and v1 backups', () => {
   assert.ok(!validateBackup({ progress: {}, stats: { date: '', count: 1.5 } }));
   assert.ok(validateBackup({ progress: {}, hours: { wd: 3, we: 6.5 }, mocks: [{ n: 79, date: '2026-11-08', score: 72, wrong: [3, 12] }, { n: 80, date: '2026-11-22', score: null, wrong: [] }] }));
   assert.ok(!validateBackup({ progress: {}, hours: { wd: 3 } }));
+  assert.ok(validateBackup({ progress: {}, streak: { last: '2026-11-08', n: 3 } }));
+  assert.ok(!validateBackup({ progress: {}, streak: { last: '2026-11-08', n: -1 } }));
   assert.ok(!validateBackup({ progress: {}, mocks: [{ n: 79, date: '2026-11-08', score: 72, wrong: ['3'] }] }));
 });
 

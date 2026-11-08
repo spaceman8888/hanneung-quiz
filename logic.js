@@ -236,6 +236,16 @@ export function studyPlan({ day, exam, hours, fresh }) {
   return { days, fit, weHours: we.length ? Math.max(0, need / we.length / 60) : null };
 }
 
+// 오늘 진행률. learn: today's new-card target + reviews of cards I've missed (counted as at the start of the day: due now +
+// done today); the other reviews are extra. final: the reviews today's hours hold (eve: one light hour), at most every
+// learned card once. Exam day: none.
+export function dayGoal({ phase, target = 0, newDone = 0, weakDue = 0, weakDone = 0, revDone = 0, min = 0, seen = 0 }) {
+  if (phase === 'learn') return { goal: target + weakDue + weakDone, done: Math.min(newDone, target) + weakDone };
+  if (phase !== 'final' && phase !== 'eve') return { goal: 0, done: 0 };
+  const goal = Math.min(seen, Math.floor((phase === 'eve' ? 60 : min) / MIN_REVIEW));
+  return { goal, done: Math.min(revDone, goal) };
+}
+
 // 실전 회차 for each mock day: newest past exams first, skipping ones done; the last mock gets the newest exam the app
 // has no data from (NEXT_EXAM.n - 1), kept as a test never seen.
 export function assignMocks(days, done, past) {
@@ -311,6 +321,11 @@ export function isStats(v) {
   return isObj(v) && typeof v.date === 'string' && isCount(v.count);
 }
 
+export const isStreak = v => isObj(v) && typeof v.last === 'string' && isCount(v.n);
+// 🔥 연속: days in a row the day's goal was reached (dates as 'YYYY-MM-DD').
+export const bumpStreak = (s, today, yesterday) => (s.last === today ? s : { last: today, n: s.last === yesterday ? s.n + 1 : 1 });
+export const streakNow = (s, today, yesterday) => (s.last === today || s.last === yesterday ? s.n : 0);
+
 export const isHours = v => isObj(v) && [v.wd, v.we].every(h => typeof h === 'number' && h >= 0 && h <= 24);
 export const isMock = v => isObj(v) && Number.isInteger(v.n) && typeof v.date === 'string'
   && (v.score === null || isCount(v.score)) && Array.isArray(v.wrong) && v.wrong.every(Number.isInteger);
@@ -321,7 +336,8 @@ export function validateBackup(data) {
     && (data.stats === undefined || isStats(data.stats))
     && (data.myNotes === undefined || isObj(data.myNotes))
     && (data.hours === undefined || isHours(data.hours))
-    && (data.mocks === undefined || (Array.isArray(data.mocks) && data.mocks.every(isMock)));
+    && (data.mocks === undefined || (Array.isArray(data.mocks) && data.mocks.every(isMock)))
+    && (data.streak === undefined || isStreak(data.streak));
 }
 
 export const ORDER_GAP = 3;
