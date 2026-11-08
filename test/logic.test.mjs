@@ -7,7 +7,7 @@ import { today, normalize, isShort, ERAS,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
   gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
-  weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
+  RETRY_GAP, current, logShown, logAnswer, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -87,21 +87,40 @@ test('submit: correct answer finishes the card immediately (multiple choice only
   assert.equal(s.wrong.size, 0);
 });
 
-test('submit: wrong goes to the end of the batch (longer gap, harder recall) and records wrong', () => {
-  const s = createSession(cardsN(4), {});
-  submit(s, false);
-  assert.deepEqual(s.queue.map(q => q.card.id), ['k1', 'k2', 'k3', 'k0']);
-  assert.ok(s.wrong.has('k0'));
-});
-
-test('submit: wrong on last remaining card keeps it until answered', () => {
-  const s = createSession([mk('a', '왕건')], { a: { seen: true, stage: 2, due: T } });
+test('submit: a miss waits RETRY_GAP answers, then comes first; it repeats until right', () => {
+  const s = createSession(cardsN(50), {});
   assert.equal(submit(s, false), null);
-  assert.equal(s.queue.length, 1);
-  assert.equal(submit(s, true).id, 'a');
-  assert.ok(s.wrong.has('a'));
+  assert.ok(s.wrong.has('k0'));
+  for (let i = 0; i < RETRY_GAP; i++) { assert.notEqual(current(s).card.id, 'k0'); submit(s, true); }
+  assert.equal(current(s).card.id, 'k0');      // after 20 other answers
+  submit(s, false);
+  for (let i = 0; i < RETRY_GAP; i++) { assert.notEqual(current(s).card.id, 'k0'); submit(s, true); }
+  assert.equal(current(s).card.id, 'k0');
+  assert.equal(submit(s, true).id, 'k0');
 });
 
+test('createSession: the next batch carries waiting misses, the answer count and graded cards', () => {
+  const s = createSession([mk('a', '왕건')], {});
+  s.saved.add('a');
+  submit(s, false);
+  assert.equal(current(s), null);         // batch done, the miss still waits
+  const t = createSession(cardsN(25), s);
+  assert.ok(t.saved.has('a'));
+  for (let i = 0; i < RETRY_GAP; i++) { assert.notEqual(current(t).card.id, 'a'); submit(t, true); }
+  assert.equal(current(t).card.id, 'a');
+});
+
+test('logShown / logAnswer: count shows and answers, keep the rest; an unseen card stays new', () => {
+  let p = logShown(undefined);
+  assert.equal(p.shown, 1);
+  assert.equal(p.s, 0);
+  assert.ok('s' in p);                    // migrate keeps it
+  p = logAnswer(logAnswer(logShown(p), false), true);
+  assert.deepEqual([p.shown, p.right, p.wrong], [2, 1, 1]);
+  const q = logAnswer(review(undefined, 3, 0), true);
+  assert.deepEqual([q.right, q.due], [1, review(undefined, 3, 0).due]);
+  assert.deepEqual(migrate({ x: q }, 5).x, q);
+});
 
 const fakeStorage = data => ({ getItem: k => (k in data ? data[k] : null) });
 
@@ -205,6 +224,18 @@ test('buildBatch: due (least remembered first) -> new -> ahead; mature cards sti
   assert.deepEqual(ids, ['k0', 'k4', 'k3', 'k2', 'k5', 'k1']);
 });
 
+test('buildBatch newFirst: today\'s new cards before reviews; reviews of missed cards before the rest', () => {
+  const progress = {
+    k0: S(2, 0, 2),                         // due, answered right so far, least remembered
+    k1: { ...S(9, 0, 9), miss: 1 },         // due, missed before
+    k2: { ...S(MATURE, 0, 9), miss: 1 },    // due, missed once but 완료 since: counts as right
+  };
+  const ids = o => buildBatch(cardsN(6), progress, { day: 10, size: 10, ...o }).map(c => c.id);
+  assert.deepEqual(ids({}), ['k1', 'k0', 'k2', 'k3', 'k4', 'k5']);
+  assert.deepEqual(ids({ newFirst: 2 }), ['k3', 'k4', 'k1', 'k0', 'k2', 'k5']);
+  assert.deepEqual(ids({ newFirst: 9 }), ['k3', 'k4', 'k5', 'k1', 'k0', 'k2']);
+});
+
 test('buildBatch: size cap, era and type filter', () => {
   const cs = [...cardsN(10), mk('j1', 'x', '조선 전기'), { ...mk('b', '세종'), type: '시기' }];
   assert.equal(buildBatch(cs, {}, { day: 0 }).length, 7);
@@ -297,10 +328,10 @@ test('studyPlan: new cards follow free time (weekends more, mock days less), sum
   assert.equal(all.days.reduce((s, x) => s + x.fresh, 0), 300);
   assert.ok(all.days.filter(x => x.phase !== 'learn').every(x => x.fresh === 0));
   assert.deepEqual([all.days[0].fresh, all.days[1].fresh, all.days[2].fresh], [36, 24, 18]);   // Sat 360 · Sun 360−120 · Mon 180 of 3,000 min
-  const big = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773 });
-  assert.equal(big.fit, 1500);                     // 3,000 min / 2 min a card
-  assert.ok(big.weHours > 6 && big.weHours < 9);   // weekends would need ~8 h a day for all of them
-  assert.ok(studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773, seen: 1000 }).fit < 1500);   // reviews of learned cards take time
+  assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773 }).fit, 1773);   // first rounds only: 1,773 × 1.25 < 3,000 min
+  const big = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 3000 });
+  assert.equal(big.fit, 2400);                     // 3,000 min / 1.25 min a card
+  assert.ok(big.weHours > 9 && big.weHours < 9.5);   // (3,750 − 1,800 weekday + 240 mock) / 4 weekend days ≈ 9.1 h
   assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 0, we: 0 }, fresh: 50 }).fit, 0);
   assert.ok(studyPlan({ day: NOV28 - 3, exam: NOV28, hours, fresh: 50 }).days.every(x => x.fresh === 0));
 });

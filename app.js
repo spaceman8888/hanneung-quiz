@@ -84,7 +84,7 @@ function planNow() {
   const cs = studyCards(), fresh = L.counts(cs, progress, day).fresh;
   const left = cs.filter(c => hits.has(c.id) && !L.entry(progress[c.id]).s).length;   // 기본 first; 심화 after
   const start = (left || fresh) + todayFresh();
-  const p = L.studyPlan({ day, exam: ex, hours, fresh: start, seen: Math.max(0, cs.length - fresh - todayFresh()) });
+  const p = L.studyPlan({ day, exam: ex, hours, fresh: start });
   L.assignMocks(p.days, new Set(mocks.filter(m => m.date !== L.today()).map(m => m.n)), pastExams());
   return { ...p, start, basic: !!left };
 }
@@ -112,14 +112,18 @@ function renderToday(weakEra) {
     li.append(btn('시험 계획 정하기', renderPlan));
     return list.replaceChildren(li);
   }
-  const t = p.days[0], due = L.counts(studyCards(), progress, day).due, done = mocks.find(m => m.date === L.today());
+  const t = p.days[0], done = mocks.find(m => m.date === L.today());
   $('todayTitle').textContent = `D-${examDay() - day} · ${t.weekend ? '주말' : '평일'} ${fmtHours(t.min)} · ${PHASE[t.phase]}`;
   const items = [];   // [text, done?, button]
   if (t.phase === 'exam') items.push(['오늘 시험! 10:00 시작 · 신분증·수험표·컴퓨터용 사인펜 · 입실 시간은 수험표에서 확인']);
   else {
-    items.push(due ? [`복습 ${due}장 · 약 ${Math.ceil(due * L.MIN_REVIEW)}분 — 오늘 다 끝내기`] : ['✓ 오늘 복습 끝', true]);
-    const k = todayFresh();
-    if (t.phase === 'learn') items.push(k >= t.fresh ? [`✓ 새 카드 ${k} / ${t.fresh}장`, true] : [`새 카드 ${k} / ${t.fresh}장 · 약 ${Math.ceil((t.fresh - k) * L.MIN_FIRST)}분`]);
+    if (t.phase === 'learn') {   // the order 학습 시작 follows: today's new cards, reviews of missed cards, the other reviews
+      const k = todayFresh(), e = c => L.entry(progress[c.id]);
+      const due = studyCards().filter(c => e(c).s && e(c).due <= day), miss = due.filter(c => e(c).miss > 0 && e(c).s < L.MATURE).length;
+      items.push(k >= t.fresh ? [`✓ 1. 새 카드 ${k} / ${t.fresh}장`, true] : [`1. 새 카드 ${k} / ${t.fresh}장 · 약 ${Math.ceil((t.fresh - k) * L.MIN_FIRST)}분`]);
+      items.push(miss ? [`2. 틀린 적 있는 카드 복습 ${miss}장 · 약 ${Math.ceil(miss * L.MIN_REVIEW)}분`] : ['✓ 2. 틀린 카드 복습 끝', true]);
+      if (due.length > miss) items.push([`3. 나머지 복습 ${due.length - miss}장 — 시간 남으면 (못 해도 마무리 주간에 다시 봐요)`]);
+    }
     if (t.phase === 'final') items.push(['마무리 학습: 새 카드 없이 시험날 잊기 쉬운 카드부터']);
     if (done) items.push([`✓ 실전 ${done.n}회 ${done.score ?? '-'}점`, true]);
     else if (t.mock) items.push([`실전 기출 ${t.n ?? ''}회 · 80분 재고 풀고 채점 (약 2시간)`, false, btn('채점하기', renderMock)]);
@@ -316,6 +320,7 @@ function enterMode(m) {
   lastRound = -1;
   $('homeMsg').textContent = '';
   doneCount = 0;
+  session = null;   // misses waiting from another mode don't follow into this one
   startBatch();
 }
 
@@ -335,21 +340,25 @@ function startBatch() {
     lastRound = cur;
     if (cur >= 0) { round = new Set(rs[cur].cards.map(c => c.id)); roundNote = ` · ${roundName(rs, cur)}`; }
   }
-  const batch = final ? L.finalBatch(studyCards(), progress, { day, exam: examDay(), hits, eras, skip: practiced })
-    : mode === 'round' ? L.buildBatch(roundSel.cards.filter(c => L.entry(progress[c.id]).due <= day), progress, { day, eras })   // due + new only
-    : mode === 'roundWeak' ? L.weakBatch(roundSel.cards, progress, { day, skip: practiced })
-    : mode === 'weak' ? L.weakBatch(studyCards(), progress, { day, skip: practiced, eras })
-    : byIds() ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip: practiced })
-    : mode === 'chain' ? L.buildBatch(studyCards(), progress, { day, eras, ids: chainIdx })   // a Map has .has()
-    : L.buildBatch(studyCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null, round });
-  if (!batch.length) {
+  const hold = new Set(session?.later.map(x => x.card.id) ?? []);   // misses waiting their 20 questions
+  const skip = new Set([...practiced, ...hold]);
+  const t = mode === 'normal' && !final ? planNow()?.days[0] : null;
+  const newFirst = t?.phase === 'learn' ? Math.max(0, t.fresh - todayFresh()) : 0;   // today's new cards before reviews
+  const batch = final ? L.finalBatch(studyCards(), progress, { day, exam: examDay(), hits, eras, skip })
+    : mode === 'round' ? L.buildBatch(roundSel.cards.filter(c => L.entry(progress[c.id]).due <= day), progress, { day, eras, skip: hold })   // due + new only
+    : mode === 'roundWeak' ? L.weakBatch(roundSel.cards, progress, { day, skip })
+    : mode === 'weak' ? L.weakBatch(studyCards(), progress, { day, skip, eras })
+    : byIds() ? L.buildBatch(allCards(), progress, { day, ids: noteIds, skip })
+    : mode === 'chain' ? L.buildBatch(studyCards(), progress, { day, eras, ids: chainIdx, skip: hold })   // a Map has .has()
+    : L.buildBatch(studyCards(), progress, { day, eras, type: MODE_TYPE[mode] ?? null, round, newFirst, skip: hold });
+  if (!batch.length && !hold.size) {
     $('homeMsg').textContent = final ? (practiced.size ? '마무리: 오늘 볼 카드를 모두 풀었어요. 자주 틀린 카드나 기출형 문제를 해 보세요.' : '마무리할 카드가 없어요. 오늘 푼 카드는 내일 다시 나와요.')
       : ['weak', 'note', 'round', 'roundWeak', 'mock'].includes(mode) && practiced.size ? `${modeLabel()}: 한 바퀴 모두 풀었어요.` : EMPTY_MSG[mode];
     return goHome();
   }
   batch.forEach(c => practiced.add(c.id));
-  session = L.createSession(batch);
-  session.saved = new Set();
+  session = L.createSession(batch, session);
+  if (!batch.length) session.queue.push(session.later.shift());   // nothing else left: the waiting misses now, 20 or not
   show('study');
   renderQuestion();
 }
@@ -358,9 +367,11 @@ function renderQuestion() {
   busy = false;
   $('feedback').replaceChildren();
   $('progressText').textContent = `${modeLabel()}${byIds() ? '' : eraNote()}${roundNote} · ${doneCount}장 풀이`;
-  const item = session.queue[0];
+  const item = L.current(session);
   if (!item) return startBatch();
   const { card } = item;
+  progress[card.id] = L.logShown(progress[card.id]);
+  save('progress', progress);
   showMedia(card);
   asChain = mode === 'chain' || (!byIds() && L.chainStyle(progress[card.id], chainIdx.has(card.id)));
   const lines = asChain ? chainIdx.get(card.id) : null;
@@ -395,11 +406,12 @@ function onAnswer(correct, button) {
   const { card } = session.queue[0];
   const id = card.id;
   let g = null;
+  progress[id] = L.logAnswer(progress[id], correct);   // every answer, retries too; grade() below takes the first only
   if (!session.saved.has(id)) {
     g = L.answerGrade(correct, { sure, ms: shownAt ? Date.now() - shownAt : 0, chars });
     grade(card, g);
     session.saved.add(id);
-  }
+  } else save('progress', progress);
   reveal?.();   // 모르겠어요 before opening the options: still show them, marked
   if (correct) { bumpStats(); doneCount++; }
   button?.classList.add(correct ? 'ok' : 'bad');
@@ -411,7 +423,9 @@ function onAnswer(correct, button) {
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
   p.textContent = !correct ? `정답: ${card.back}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
-  $('feedback').replaceChildren(p);
+  const log = progress[id];
+  $('feedback').replaceChildren(p, el('p', `이 카드: ${log.shown ?? 1}번 나옴 · 맞힘 ${log.right ?? 0} · 틀림 ${log.wrong ?? 0}`
+    + (correct ? '' : ` · 다른 문제 ${L.RETRY_GAP}개 뒤에 다시 나와요`), 'muted'));
   if (asChain) $('feedback').append(el('p', `(가) ${card.front}`));
   if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));
   const help = el('div');
@@ -692,6 +706,11 @@ function renderManage() {
   const flagged = allCards().filter(c => progress[c.id]?.flagged);
   $('flagList').replaceChildren(...cardList(flagged, '해제', c => { progress[c.id].flagged = false; }));
   if (!flagged.length) $('flagList').textContent = '없음';
+  const logged = allCards().filter(c => progress[c.id]?.shown);
+  const sum = k => logged.reduce((n, c) => n + (progress[c.id][k] ?? 0), 0), right = sum('right'), wrong = sum('wrong');
+  $('logSum').textContent = logged.length ? `${logged.length}장이 ${sum('shown')}번 나왔어요 · 맞힘 ${right} · 틀림 ${wrong} · 정답률 ${Math.round(100 * right / Math.max(1, right + wrong))}%` : '아직 기록이 없어요.';
+  $('logList').replaceChildren(...logged.filter(c => progress[c.id].wrong).sort((a, b) => progress[b.id].wrong - progress[a.id].wrong || progress[b.id].shown - progress[a.id].shown)
+    .slice(0, 100).map(c => { const x = progress[c.id]; return el('li', `${c.front} → ${c.back} · ${x.shown}번 나옴 · 맞힘 ${x.right ?? 0} · 틀림 ${x.wrong}`); }));
   const done = allCards().filter(c => L.entry(progress[c.id]).s >= L.MATURE);
   $('doneSummary').textContent = `완료 카드 (${done.length})`;
   const q = $('doneFilter').value;

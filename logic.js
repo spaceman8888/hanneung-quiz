@@ -165,18 +165,22 @@ function oneEach(list, size) {
 }
 
 // round: the current round's ids — its new cards come before any other new card.
-export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, round = null, skip = new Set(), size = BATCH_SIZE, rng = Math.random }) {
+// newFirst: how many new cards still come before reviews today (the day's target left). With a deadline three weeks out,
+// seeing every card once beats keeping each at 90% (simulated on the 기출 score: about +6 points).
+// Reviews: cards I've missed (not yet 완료) first, then the rest; least remembered first in each.
+export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, round = null, skip = new Set(), size = BATCH_SIZE, newFirst = 0, rng = Math.random }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
+  const weak = c => p(c.id).miss > 0 && p(c.id).s < MATURE;
   const pool = cards.filter(c => inEras(c, eras) && (!type || c.type === type)
     && (!ids || ids.has(c.id)) && !skip.has(c.id));
   const seen = pool.filter(c => p(c.id).s);
-  const due = seen.filter(c => p(c.id).due <= day).sort(forgot);
+  const due = seen.filter(c => p(c.id).due <= day).sort((a, b) => weak(b) - weak(a) || forgot(a, b));
   const unseen = pool.filter(c => !p(c.id).s);
   const mix = list => (eras?.length > 1 ? mixEras(list, rng) : list);
   const fresh = round ? [...mix(unseen.filter(c => round.has(c.id))), ...mix(unseen.filter(c => !round.has(c.id)))] : mix(unseen);
   const ahead = seen.filter(c => p(c.id).due > day).sort(forgot);
-  return oneEach([...due, ...fresh, ...ahead], size);
+  return oneEach([...fresh.slice(0, newFirst), ...due, ...fresh.slice(newFirst), ...ahead], size);
 }
 
 export function weakBatch(cards, progress, { day, skip = new Set(), eras = null, size = BATCH_SIZE }) {
@@ -203,17 +207,16 @@ export function counts(cards, progress, day) {
 export const NEXT_EXAM = { n: 81, date: '2026-11-28' };
 export const MOCK_MIN = 120;   // 실전 기출: 80 min on paper + 40 min marking and reading the misses
 // ponytail: fixed minutes per card; time real sessions if plans keep running long or short.
-export const MIN_FIRST = 1, MIN_REVIEW = 1 / 3;     // a new card's first round (with the explanation); one review
-const MIN_NEW = MIN_FIRST + 3 * MIN_REVIEW;         // a new card until the exam: first round + about 3 reviews
-const MIN_SEEN = 1.5 * MIN_REVIEW;                  // a card already learned: about 1.5 reviews before the exam
+export const MIN_FIRST = 1.25, MIN_REVIEW = 1 / 3;   // a new card's first round (explanation, the retry when missed); one review
 
 export const weekDay = day => (day + 4) % 7;   // dayOf -> 0 = Sunday (day 0, 1970-01-01, was a Thursday)
 
 // Days from today to the exam: learn (new cards) until a week before, then final (no new cards), eve, exam.
 // Mocks: Sundays while learning, both weekend days in the final week. New cards share the learning days' time left after
-// mocks, in proportion to it (weekends get more); fit = how many fit once cards already learned are reviewed;
-// weHours = weekend hours a day that would fit them all with weekday hours unchanged.
-export function studyPlan({ day, exam, hours, fresh, seen = 0 }) {
+// mocks, in proportion to it (weekends get more). They come before reviews (buildBatch newFirst), so fit = how many first
+// rounds fit in that time; reviews get what is left, then the final week. weHours = weekend hours a day that would fit
+// them all with weekday hours unchanged.
+export function studyPlan({ day, exam, hours, fresh }) {
   const days = [];
   for (let d = day; d <= exam; d++) {
     const w = weekDay(d), weekend = w === 0 || w === 6;
@@ -224,11 +227,11 @@ export function studyPlan({ day, exam, hours, fresh, seen = 0 }) {
   const learn = days.filter(x => x.phase === 'learn');
   const free = x => Math.max(0, x.min - (x.mock ? MOCK_MIN : 0));
   const total = learn.reduce((s, x) => s + free(x), 0);
-  const fit = Math.min(fresh, Math.max(0, Math.floor((total - seen * MIN_SEEN) / MIN_NEW)));
+  const fit = Math.min(fresh, Math.floor(total / MIN_FIRST));
   let acc = 0, given = 0;
   for (const x of learn) { acc += free(x); const upto = total ? Math.round(fit * acc / total) : 0; x.fresh = upto - given; given = upto; }
   const we = learn.filter(x => x.weekend);
-  const need = fresh * MIN_NEW + seen * MIN_SEEN - learn.filter(x => !x.weekend).reduce((s, x) => s + free(x), 0)
+  const need = fresh * MIN_FIRST - learn.filter(x => !x.weekend).reduce((s, x) => s + free(x), 0)
     + we.filter(x => x.mock).length * MOCK_MIN;
   return { days, fit, weHours: we.length ? Math.max(0, need / we.length / 60) : null };
 }
@@ -257,22 +260,40 @@ export function mockMisses(questions, n, wrong) {
   return { qs, ids: new Set(qs.flatMap(q => q.cards)) };
 }
 
-export function createSession(batch) {
+// A missed card comes back after RETRY_GAP more answers, until answered right: the longer gap makes the retry a real
+// recall (lag effect). prev = the session the last batch ran in: its waiting cards, answer count and graded cards carry on.
+export const RETRY_GAP = 20;
+export function createSession(batch, prev = null) {
   return {
     queue: batch.map(card => ({ card })),
-    wrong: new Set(),
+    wrong: prev?.wrong ?? new Set(),
+    later: prev?.later ?? [],      // [{ card, at }] in answer order: shown once n reaches at
+    n: prev?.n ?? 0,               // answers so far
+    saved: prev?.saved ?? new Set(),   // graded already (FSRS takes the first answer only)
   };
 }
 
 export function submit(session, correct) {
   const item = session.queue.shift();
+  session.n++;
   if (!correct) {
     session.wrong.add(item.card.id);
-    session.queue.push(item);   // the end of the batch: a longer gap makes the retry a real recall
+    session.later.push({ card: item.card, at: session.n + RETRY_GAP });
     return null;
   }
   return item.card;
 }
+
+// The question to show: a waiting missed card whose gap has passed, else the batch's next card (null: build a new batch).
+export function current(session) {
+  const i = session.later.findIndex(x => x.at <= session.n);
+  if (i >= 0) session.queue.unshift(session.later.splice(i, 1)[0]);
+  return session.queue[0] ?? null;
+}
+
+// 풀이 기록 per card: shown (every time it comes up), right / wrong (every answer, retries too).
+export const logShown = prev => ({ ...entry(prev), shown: (prev?.shown ?? 0) + 1 });
+export const logAnswer = (prev, ok) => { const k = ok ? 'right' : 'wrong'; return { ...entry(prev), [k]: (prev?.[k] ?? 0) + 1 }; };
 
 export function loadJSON(storage, key, fallback) {
   try {
