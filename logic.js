@@ -55,7 +55,8 @@ export function review(prev, grade, day) {
       : p.s * (1 + Math.exp(W[8]) * (11 - p.d) * p.s ** -W[9] * Math.expm1(W[10] * (1 - r))
         * (grade === 2 ? W[15] : 1) * (grade === 4 ? W[16] : 1));
   }
-  return { ...p, s, d, last: day, due: day + Math.max(1, Math.round(s)), lapses: p.lapses + (p.s && grade === 1 ? 1 : 0), miss: p.miss + (grade === 1 ? 1 : 0) };
+  return { ...p, s, d, last: day, due: day + Math.max(1, Math.round(s)), lapses: p.lapses + (p.s && grade === 1 ? 1 : 0), miss: p.miss + (grade === 1 ? 1 : 0),
+    run: grade === 1 ? (p.run ?? 0) + 1 : 0 };   // run: graded misses in a row (a session's retries end right, so only first answers count)
 }
 
 // v1–v6 entries ({ seen, done, lapses, ... }) become one FSRS review dated today.
@@ -165,17 +166,19 @@ function oneEach(list, size) {
 }
 
 // round: the current round's ids — its new cards come before any other new card.
-// newFirst: how many new cards still come before reviews today (the day's target left). With a deadline three weeks out,
-// seeing every card once beats keeping each at 90% (simulated on the 기출 score: about +6 points).
-// Reviews: cards I've missed (not yet 완료) first, then the rest; least remembered first in each.
+// newFirst: how many new cards come before reviews (Infinity: every new card once first). With a deadline three weeks
+// out, seeing every card once beats keeping each at 90% (simulated on the 기출 score: about +6 points).
+// Reviews: cards I've missed (not yet 완료) first — most misses in a row, then most misses — then the rest, least
+// remembered first.
 export function buildBatch(cards, progress, { day, eras = null, type = null, ids = null, round = null, skip = new Set(), size = BATCH_SIZE, newFirst = 0, rng = Math.random }) {
   const p = id => entry(progress[id]);
   const forgot = (a, b) => recall(progress[a.id], day) - recall(progress[b.id], day);
   const weak = c => p(c.id).miss > 0 && p(c.id).s < MATURE;
+  const worse = (a, b) => (p(b.id).run ?? 0) - (p(a.id).run ?? 0) || p(b.id).miss - p(a.id).miss;
   const pool = cards.filter(c => inEras(c, eras) && (!type || c.type === type)
     && (!ids || ids.has(c.id)) && !skip.has(c.id));
   const seen = pool.filter(c => p(c.id).s);
-  const due = seen.filter(c => p(c.id).due <= day).sort((a, b) => weak(b) - weak(a) || forgot(a, b));
+  const due = seen.filter(c => p(c.id).due <= day).sort((a, b) => weak(b) - weak(a) || (weak(a) && worse(a, b)) || forgot(a, b));
   const unseen = pool.filter(c => !p(c.id).s);
   const mix = list => (eras?.length > 1 ? mixEras(list, rng) : list);
   const fresh = round ? [...mix(unseen.filter(c => round.has(c.id))), ...mix(unseen.filter(c => !round.has(c.id)))] : mix(unseen);
@@ -186,7 +189,7 @@ export function buildBatch(cards, progress, { day, eras = null, type = null, ids
 export function weakBatch(cards, progress, { day, skip = new Set(), eras = null, size = BATCH_SIZE }) {
   const p = id => entry(progress[id]);
   const list = cards.filter(c => inEras(c, eras) && !skip.has(c.id) && p(c.id).miss > 0 && p(c.id).s < MATURE)
-    .sort((a, b) => p(b.id).miss - p(a.id).miss || recall(progress[a.id], day) - recall(progress[b.id], day));
+    .sort((a, b) => (p(b.id).run ?? 0) - (p(a.id).run ?? 0) || p(b.id).miss - p(a.id).miss || recall(progress[a.id], day) - recall(progress[b.id], day));
   return oneEach(list, size);
 }
 
@@ -205,17 +208,16 @@ export function counts(cards, progress, day) {
 
 // 시험 계획 — next exam (historyexam.go.kr, checked 2026-11-07): 제81회 심화 2026-11-28 (토) 10:00. Update with each release.
 export const NEXT_EXAM = { n: 81, date: '2026-11-28' };
-export const MOCK_MIN = 120;   // 실전 기출: 80 min on paper + 40 min marking and reading the misses
 // ponytail: fixed minutes per card; time real sessions if plans keep running long or short.
 export const MIN_FIRST = 1.25, MIN_REVIEW = 1 / 3;   // a new card's first round (explanation, the retry when missed); one review
 
 export const weekDay = day => (day + 4) % 7;   // dayOf -> 0 = Sunday (day 0, 1970-01-01, was a Thursday)
 
 // Days from today to the exam: learn (new cards) until a week before, then final (no new cards), eve, exam.
-// Mocks: Sundays while learning, both weekend days in the final week. New cards share the learning days' time left after
-// mocks, in proportion to it (weekends get more). They come before reviews (buildBatch newFirst), so fit = how many first
-// rounds fit in that time; reviews get what is left, then the final week. weHours = weekend hours a day that would fit
-// them all with weekday hours unchanged.
+// Mocks (optional, no time set aside): Sundays while learning, both weekend days in the final week. New cards share the
+// learning days' time in proportion to it (weekends get more): today's share is the day's goal (🔥); 학습 시작 goes on
+// through every new card anyway. fit = how many first rounds fit in that time; reviews get what is left, then the final
+// week. weHours = weekend hours a day that would fit them all with weekday hours unchanged.
 export function studyPlan({ day, exam, hours, fresh }) {
   const days = [];
   for (let d = day; d <= exam; d++) {
@@ -225,14 +227,13 @@ export function studyPlan({ day, exam, hours, fresh }) {
     days.push({ day: d, weekend, phase, mock, min: Math.round(60 * (weekend ? hours.we : hours.wd)), fresh: 0, n: null });
   }
   const learn = days.filter(x => x.phase === 'learn');
-  const free = x => Math.max(0, x.min - (x.mock ? MOCK_MIN : 0));
+  const free = x => x.min;
   const total = learn.reduce((s, x) => s + free(x), 0);
   const fit = Math.min(fresh, Math.floor(total / MIN_FIRST));
   let acc = 0, given = 0;
   for (const x of learn) { acc += free(x); const upto = total ? Math.round(fit * acc / total) : 0; x.fresh = upto - given; given = upto; }
   const we = learn.filter(x => x.weekend);
-  const need = fresh * MIN_FIRST - learn.filter(x => !x.weekend).reduce((s, x) => s + free(x), 0)
-    + we.filter(x => x.mock).length * MOCK_MIN;
+  const need = fresh * MIN_FIRST - learn.filter(x => !x.weekend).reduce((s, x) => s + free(x), 0);
   return { days, fit, weHours: we.length ? Math.max(0, need / we.length / 60) : null };
 }
 
@@ -531,12 +532,12 @@ export function setMyNote(notes, id, text) {
 }
 
 // After a miss: a nudge if it keeps slipping, my own note, how to remember it, why, what the chosen option really was, the confusable pair.
-export function missLines(card, { chose = null, cards = [], item = null, lapses = 0, mine = '' } = {}) {
+export function missLines(card, { chose = null, cards = [], item = null, run = 0, mine = '' } = {}) {
   const o = chose ? ownerCard(card, chose, cards) : null;
   const hint = o && (o.memo ?? o.tip ?? o.note);
   const memo = card.memo ?? item?.memo;
   return [
-    lapses >= 2 && { k: 'again', text: `복습에서 ${lapses}번 틀린 카드예요. 외우는 법을 소리 내어 읽고 노트도 열어 보세요.` },
+    run >= 2 && { k: 'again', text: `${run}번 연속 틀린 카드예요. 같은 방법으로 반복하기보다 🧠 연상과 🔑 외우는 법을 소리 내어 읽고, ✏️ 메모에 내 말로 적어 보세요.` },
     mine && { k: 'mine', text: '✏️ ' + mine },
     memo && { k: 'memo', text: '🔑 ' + memo },
     card.tip && { k: 'tip', text: '💡 ' + card.tip },

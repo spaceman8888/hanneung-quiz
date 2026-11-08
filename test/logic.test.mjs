@@ -321,17 +321,17 @@ test('studyPlan: learn until a week before, then final, eve, exam; mocks on lear
   assert.deepEqual([at(NOV7).min, at(NOV7 + 2).min], [360, 180]);
 });
 
-test('studyPlan: new cards follow free time (weekends more, mock days less), sum to what fits, none after learning', () => {
+test('studyPlan: new cards follow study time (weekends more; optional mocks take none), sum to what fits, none after learning', () => {
   const hours = { wd: 3, we: 6 };
   const all = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 300 });
   assert.equal(all.fit, 300);
   assert.equal(all.days.reduce((s, x) => s + x.fresh, 0), 300);
   assert.ok(all.days.filter(x => x.phase !== 'learn').every(x => x.fresh === 0));
-  assert.deepEqual([all.days[0].fresh, all.days[1].fresh, all.days[2].fresh], [36, 24, 18]);   // Sat 360 · Sun 360−120 · Mon 180 of 3,000 min
-  assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773 }).fit, 1773);   // first rounds only: 1,773 × 1.25 < 3,000 min
+  assert.deepEqual([all.days[0].fresh, all.days[1].fresh, all.days[2].fresh], [33, 34, 16]);   // Sat 360 · Sun 360 · Mon 180 of 3,240 min
+  assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 1773 }).fit, 1773);   // first rounds only: 1,773 × 1.25 < 3,240 min
   const big = studyPlan({ day: NOV7, exam: NOV28, hours, fresh: 3000 });
-  assert.equal(big.fit, 2400);                     // 3,000 min / 1.25 min a card
-  assert.ok(big.weHours > 9 && big.weHours < 9.5);   // (3,750 − 1,800 weekday + 240 mock) / 4 weekend days ≈ 9.1 h
+  assert.equal(big.fit, 2592);                     // 3,240 min / 1.25 min a card
+  assert.ok(big.weHours > 8 && big.weHours < 8.5);   // (3,750 − 1,800 weekday) / 4 weekend days ≈ 8.1 h
   assert.equal(studyPlan({ day: NOV7, exam: NOV28, hours: { wd: 0, we: 0 }, fresh: 50 }).fit, 0);
   assert.ok(studyPlan({ day: NOV28 - 3, exam: NOV28, hours, fresh: 50 }).days.every(x => x.fresh === 0));
 });
@@ -796,17 +796,37 @@ test('missLines: a 판별 miss names whose fact I picked', () => {
   assert.equal(missLines(j, { chose: o.back, cards: [j, o] }).find(l => l.k === 'vs').text, '↔ 내가 고른 보기는 성종 이야기: 최승로 건의');
 });
 
-test('missLines: missed in review twice or more → a nudge first', () => {
+test('missLines: missed twice or more in a row → a nudge to change how I learn it, first', () => {
   const k = { id: 'k', type: '인물', era: '고려', front: 'f', back: 'b', tip: 't', memo: 'm' };
-  assert.equal(missLines(k, { lapses: 1 })[0].k, 'memo');
-  const ls = missLines(k, { lapses: 3 });
+  assert.equal(missLines(k, { run: 1 })[0].k, 'memo');
+  const ls = missLines(k, { run: 3 });
   assert.equal(ls[0].k, 'again');
-  assert.match(ls[0].text, /3번/);
+  assert.match(ls[0].text, /3번 연속/);
+});
+
+test('review run: graded misses in a row, back to 0 on a right answer', () => {
+  let p = review(undefined, 1, 0);
+  assert.equal(p.run, 1);
+  p = review(p, 1, 1);
+  assert.equal(p.run, 2);
+  assert.equal(review(p, 3, 2).run, 0);
+  assert.equal(review({ s: 3, d: 5, last: 0, due: 3, lapses: 0 }, 1, 3).run, 1);   // records from before run start at 0
+});
+
+test('buildBatch / weakBatch: missed cards with the most misses in a row first, then most misses, then least remembered', () => {
+  const progress = {
+    k0: { ...S(3, 0, 5), miss: 4, run: 1 },
+    k1: { ...S(3, 0, 5), miss: 2, run: 3 },
+    k2: { ...S(3, 0, 5), miss: 5, run: 1 },
+    k3: S(1, 0, 5),                          // due, never missed: after the missed ones even though least remembered
+  };
+  assert.deepEqual(buildBatch(cardsN(4), progress, { day: 6, size: 10 }).map(c => c.id), ['k1', 'k2', 'k0', 'k3']);
+  assert.deepEqual(weakBatch(cardsN(4), progress, { day: 6, size: 10 }).map(c => c.id), ['k1', 'k2', 'k0']);
 });
 
 test('missLines: my own note comes right after the nudge, before the app\'s lines', () => {
   const k = { id: 'k', type: '인물', era: '고려', front: 'f', back: 'b', tip: 't', memo: 'm' };
-  const ls = missLines(k, { lapses: 2, mine: '근육왕' });
+  const ls = missLines(k, { run: 2, mine: '근육왕' });
   assert.deepEqual(ls.map(l => l.k), ['again', 'mine', 'memo', 'tip']);
   assert.equal(ls[1].text, '✏️ 근육왕');
   assert.deepEqual(missLines(k).map(l => l.k), ['memo', 'tip']);
