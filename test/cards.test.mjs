@@ -153,3 +153,11 @@ test('merged.json: every merged card is gone and its keeper exists (records move
     assert.ok(ids.has(keep), `${gone} → ${keep} missing`);
   }
 });
+
+test('every 기본 card (used by a past exam) has a 📖 해설: plain text, 100–360 characters', () => {
+  const { questions } = JSON.parse(readFileSync(new URL('../gichul.json', import.meta.url), 'utf8'));
+  const used = new Set(questions.flatMap(q => q.cards));
+  const basic = cards.filter(c => used.has(c.id));
+  assert.ok(basic.length > 1700, String(basic.length));
+  for (const c of basic) assert.ok(typeof c.exp === 'string' && c.exp.length >= 100 && c.exp.length <= 360 && !/[\n"]/.test(c.exp), `${c.id}: ${c.exp}`);
+});

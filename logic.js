@@ -531,7 +531,8 @@ export function setMyNote(notes, id, text) {
   return t ? { ...rest, [id]: t } : rest;
 }
 
-// After a miss: a nudge if it keeps slipping, my own note, how to remember it, why, what the chosen option really was, the confusable pair.
+// After a miss: a nudge if it keeps slipping, my own note, how to remember it, why, the full explanation, what the chosen
+// option really was, the confusable pair.
 export function missLines(card, { chose = null, cards = [], item = null, run = 0, mine = '' } = {}) {
   const o = chose ? ownerCard(card, chose, cards) : null;
   const hint = o && (o.memo ?? o.tip ?? o.note);
@@ -541,6 +542,7 @@ export function missLines(card, { chose = null, cards = [], item = null, run = 0
     mine && { k: 'mine', text: '✏️ ' + mine },
     memo && { k: 'memo', text: '🔑 ' + memo },
     card.tip && { k: 'tip', text: '💡 ' + card.tip },
+    card.exp && { k: 'exp', text: '📖 ' + card.exp },
     hint && { k: 'vs', text: card.type === '판별' ? `↔ 내가 고른 보기는 ${o.front} 이야기: ${hint}` : `↔ 내가 고른 '${chose}': ${hint}` },
     item?.confuse && { k: 'confuse', text: '⚠ ' + item.confuse },
   ].filter(Boolean);

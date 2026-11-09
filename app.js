@@ -496,15 +496,16 @@ function onAnswer(correct, button) {
   const help = el('div');
   const run = L.entry(progress[id]).run ?? 0;
   let assocOpen = !correct && run >= 2 && !!card.assoc;   // missed again and again: open the other way to remember it
+  const firstSight = (progress[id]?.shown ?? 1) <= 1;   // right the first time: still read the 📖 해설 once, no auto-advance
   const drawHelp = () => help.replaceChildren(...[
-    ...(correct ? [myNotes[id] && { k: 'mine', text: '✏️ ' + myNotes[id] }]
+    ...(correct ? [myNotes[id] && { k: 'mine', text: '✏️ ' + myNotes[id] }, firstSight && card.exp && { k: 'exp', text: '📖 ' + card.exp }]
       : L.missLines(card, { chose: button?.dataset.choice, cards: allCards(), item: noteIdx.get(id), run, mine: myNotes[id] })),
     assocOpen && { k: 'assoc', text: '🧠 ' + card.assoc },
   ].filter(Boolean).map(l => el('p', l.text, 'tip ' + l.k)));
   drawHelp();
   $('feedback').append(help);
   if (card.note) $('feedback').append(el('p', card.note, 'muted'));
-  if (correct && !card.note && !myNotes[id] && !asChain) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
+  if (correct && !card.note && !myNotes[id] && !asChain && !(firstSight && card.exp)) { const s = session; timer = setTimeout(() => { timer = null; if (s === session) commit(true); }, g === 2 ? 1500 : 500); return; }
   $('feedback').append(btn('다음', () => commit(correct), 'primary'));
   if (!correct && card.assoc && !assocOpen) { const b = btn('🧠 연상으로 외우기', () => { assocOpen = true; drawHelp(); b.remove(); }); $('feedback').append(b); }
   const editor = el('div', null, 'myNote');

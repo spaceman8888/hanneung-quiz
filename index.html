@@ -26,7 +26,7 @@
   .ok { color:var(--ok); border-color:var(--ok); } .bad { color:var(--bad); border-color:var(--bad); }
   #feedback p { font-size:19px; font-weight:600; } #feedback p.muted { font-size:15px; font-weight:400; }
   #feedback p.tip { font-size:16px; font-weight:400; line-height:1.55; background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:10px 12px; word-break:keep-all; }
-  #feedback p.tip.memo { font-weight:600; } #feedback p.tip.mine { border-left-color:var(--ok); } #feedback p.tip.assoc { border-left-style:dashed; }
+  #feedback p.tip.exp { border-left-color:var(--muted); font-size:15.5px; line-height:1.65; } #feedback p.tip.memo { font-weight:600; } #feedback p.tip.mine { border-left-color:var(--ok); } #feedback p.tip.assoc { border-left-style:dashed; }
   .myNote textarea { height:90px; margin:6px 0; } #feedback p.tip.again { border-left-color:var(--bad); color:var(--bad); font-weight:600; }
   .photoGrid small.credit { font-size:11px; }
   #feedback button { margin:4px 8px 4px 0; }
@@ -239,7 +239,7 @@
       <li>모르면 찍지 말고 <b>모르겠어요</b>. 찍어서 맞히면 아는 줄 알고 너무 늦게 다시 나와요.</li>
       <li><b>이미 알아요</b>는 확실할 때만. 누른 뒤 답을 골라야 확인돼요. 맞히면 오래 뒤에, 틀리면 곧 다시 나와요.</li>
       <li>오래 고민해 맞힌 카드는 저절로 조금 일찍 다시 나와요. 서두르지 않아도 돼요.</li>
-      <li>2번 이상 연속으로 틀린 카드는 🧠 연상이 저절로 펼쳐지고, 반복 대신 외우는 방식을 바꿔 보라고 알려 줘요. 틀리면 ✏️ 내 메모, 🔑 외우는 법, 💡 이유, ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 다른 문제 20개를 푼 뒤 다시 나와요(맞힐 때까지). 간격을 두고 다시 떠올려야 더 오래 남아요. 남은 문제가 20개보다 적으면 마지막에 나와요. 답하면 그 카드가 몇 번 나왔고 몇 번 맞히고 틀렸는지 보여요(더보기 → 관리 → 풀이 기록).</li>
+      <li>2번 이상 연속으로 틀린 카드는 🧠 연상이 저절로 펼쳐지고, 반복 대신 외우는 방식을 바꿔 보라고 알려 줘요. 틀리면 ✏️ 내 메모, 🔑 외우는 법, 💡 이유, 📖 해설(배경 → 내용·결과 → 시험에 나오는 단서), ↔ 내가 고른 보기의 정체, ⚠ 헷갈리는 짝이 나와요. 처음 보는 카드는 맞혀도 📖 해설을 한 번 보여 줘요(기본 카드). 🔑는 소리 내어 한 번 읽으세요. 틀린 카드는 다른 문제 20개를 푼 뒤 다시 나와요(맞힐 때까지). 간격을 두고 다시 떠올려야 더 오래 남아요. 남은 문제가 20개보다 적으면 마지막에 나와요. 답하면 그 카드가 몇 번 나왔고 몇 번 맞히고 틀렸는지 보여요(더보기 → 관리 → 풀이 기록).</li>
       <li><b>🧠 연상으로 외우기</b>를 누르면 소리가 비슷한 말과 엉뚱한 장면으로 엮은 연상이 나와요. 말장난은 기억 손잡이일 뿐 낱말의 뜻이나 유래가 아니에요.</li>
       <li><b>✏️ 메모</b>에 그 문제에 대한 나만의 연상이나 헷갈린 이유를 적어 두세요. 다음에 그 카드가 나오면 맞혀도 틀려도 맨 위에 보여요. 지우려면 비우고 저장하세요.</li>
       <li>이상한 카드는 <b>신고</b>. 더보기 → 관리 → 신고한 카드에 모여요.</li>

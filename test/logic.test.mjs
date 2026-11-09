@@ -788,6 +788,9 @@ test('missLines: how to remember first, then why, what I chose, the confusable p
   const ls2 = missLines({ ...k, memo: undefined }, { cards: [k, s], item });
   assert.deepEqual(ls2.map(l => l.text), ['🔑 노트 요령', '💡 호족 누르기', '⚠ 광종 ↔ 성종']);
   assert.deepEqual(missLines(k, { chose: '성종', cards: [k, { ...s, tip: undefined, memo: undefined }] }).map(l => l.k), ['memo', 'tip']);
+  const withExp = missLines({ ...k, exp: '호족 세력을 누르려고…' }, { chose: '성종', cards: [k, s], item });
+  assert.deepEqual(withExp.map(l => l.k), ['memo', 'tip', 'exp', 'vs', 'confuse']);   // the full explanation right after the one-line why
+  assert.equal(withExp[2].text, '📖 호족 세력을 누르려고…');
 });
 
 test('missLines: a 판별 miss names whose fact I picked', () => {
