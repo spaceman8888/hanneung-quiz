@@ -458,6 +458,77 @@ const nums = s => s.match(/\d+/g) ?? [];
 export const leaks = (clue, answer) => words(clue).some(t => answer.includes(t)) || words(answer).some(t => clue.includes(t))
   || nums(clue).some(n => nums(answer).includes(n));
 
+// 쪽집게 노트: every subject (a king, state, person, group, event, period…) with what it is known for — its 판별 facts and
+// the events asked as "when?" (★ = used by a past exam; near-duplicates of a fact dropped) — plus the clue keywords past
+// exams gave for it and how many past questions touched it. Kings and periods sort by their earliest dated card.
+const bare = s => s.replace(/^(고구려|백제|신라|통일 신라|발해|고려|조선)\s+/, '');
+const eventText = c => orderLabel(c).replace(/^(고구려|백제|신라|통일 신라|발해|고려|조선)(의|가|이|는|,)?\s+/, '');
+export function cheatSheet(cards, { questions = [], sets = [] } = {}) {
+  const used = new Set(questions.flatMap(q => q.cards));
+  const subj = new Map(), list = [];
+  const add = (era, name, group) => {
+    const k = era + '|' + bare(name);
+    if (!subj.has(k)) { const o = { key: k, era, group, name, facts: [], ids: [], years: [], clues: [], q: 0 }; subj.set(k, o); list.push(o); }
+    return subj.get(k);
+  };
+  const find = (era, name) => subj.get(era + '|' + bare(name))
+    ?? list.find(o => o.era === era && bare(o.name).startsWith(bare(name) + ' '));   // 태조 → 태조 왕건
+  for (const c of cards) if (c.type === '판별') {
+    const o = add(c.era, c.front, c.group);
+    o.facts.push({ t: c.back, star: used.has(c.id) });
+    o.ids.push(c.id);
+    if (c.year) o.years.push(c.year);
+  }
+  for (const c of cards) if (c.type === '시기') {
+    const o = find(c.era, c.back) ?? add(c.era, c.back, kingGroup(c) ?? `${c.era} 시기`);
+    const t = eventText(c), ws = words(t);
+    const dup = o.facts.some(f => ws.length && ws.filter(w => f.t.includes(w)).length / ws.length >= 0.5);
+    if (!dup) o.facts.push({ t, star: used.has(c.id) });
+    o.ids.push(c.id);
+    if (c.year) o.years.push(c.year);
+  }
+  for (const st of sets) {
+    const o = find(st.era, st.subject);
+    if (o) for (const k of st.clues) if (!o.clues.includes(k) && !k.includes(bare(o.name)) && !bare(o.name).includes(k)) o.clues.push(k);
+  }
+  const of = new Map(list.flatMap(o => o.ids.map(id => [id, o])));
+  for (const q of questions) for (const o of new Set(q.cards.map(id => of.get(id)).filter(Boolean))) o.q++;
+  for (const o of list) o.facts.sort((a, b) => b.star - a.star);
+  const groups = [...new Set(list.map(o => o.group))];
+  const rank = (o, i) => [groups.indexOf(o.group), reign(o) ?? (/시기$/.test(o.group) && o.years.length ? Math.min(...o.years) : Infinity), i];
+  const by = list.map((o, i) => [rank(o, i), o]);
+  by.sort(([a], [b]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  return by.map(([, { years, ...o }]) => o);
+}
+// Rulers in order, by the group their cards are in; a name matches exactly, else as the start of a longer one (태조 왕건).
+const REIGNS = {
+  고구려: '동명성왕 유리왕 대무신왕 태조왕 고국천왕 동천왕 미천왕 고국원왕 소수림왕 광개토대왕 장수왕 문자왕 안원왕 양원왕 평원왕 영양왕 영류왕 보장왕',
+  백제: '온조왕 고이왕 근초고왕 침류왕 아신왕 비유왕 개로왕 문주왕 동성왕 무령왕 성왕 위덕왕 무왕 의자왕',
+  신라: '박혁거세 내물왕 실성 눌지 소지 지증왕 법흥왕 진흥왕 진평왕 선덕여왕 진덕여왕 태종무열왕 문무왕 신문왕 효소왕 성덕왕 경덕왕 혜공왕 선덕왕 원성왕 헌덕왕 흥덕왕 문성왕 경문왕 헌강왕 진성여왕 효공왕 경애왕 경순왕',
+  발해: '대조영 고왕 무왕 문왕 선왕 대인선',
+  고려: '태조 혜종 정종 광종 경종 성종 목종 현종 덕종 문종 순종 선종 헌종 숙종 예종 인종 의종 명종 신종 희종 강종 고종 원종 충렬왕 충선왕 충숙왕 충혜왕 충목왕 충정왕 공민왕 우왕 창왕 공양왕',
+  조선: '태조 정종 태종 세종 문종 단종 세조 예종 성종 연산군 중종 인종 명종 선조 광해군 인조 효종 현종 숙종 경종 영조 정조 순조 헌종 철종 고종 순종',
+  현대: '이승만 허정 장면 박정희 최규하 전두환 노태우 김영삼 김대중 노무현 이명박 박근혜 문재인 윤석열',
+  일제: '무단 문화 민족말살',
+};
+const REIGN_OF = { '삼국 고구려 왕': '고구려', '삼국 백제 왕': '백제', '삼국 신라 왕': '신라', '통일신라 왕': '신라', '발해 왕': '발해',
+  '고려 왕': '고려', '조선 전기 왕': '조선', '조선 후기 왕': '조선', '현대 정부': '현대', '일제강점기 시기': '일제' };
+function reign(o) {
+  const names = REIGNS[REIGN_OF[o.group]]?.split(' ');
+  if (!names) return null;
+  const n = normalize(bare(o.name).replace(/^발해\s*/, ''));
+  const i = names.indexOf(n);
+  return i >= 0 ? i : (j => (j >= 0 ? j : null))(names.findIndex(x => n.startsWith(x)));
+}
+
+// A king asked only as "when?" (a ruler of the state its question names, by the reign lists): that state's kings.
+const kingGroup = c => {
+  const n = nationOf(c.front);
+  const [dyn, group] = c.era === '삼국' ? [n, n && `삼국 ${n} 왕`] : c.era === '통일신라·발해' ? (n === '발해' ? ['발해', '발해 왕'] : ['신라', '통일신라 왕'])
+    : c.era === '고려' ? ['고려', '고려 왕'] : /^조선/.test(c.era) ? ['조선', `${c.era} 왕`] : [];
+  return group && REIGNS[dyn]?.split(' ').includes(normalize(bare(c.back))) ? group : null;
+};
+
 // 기출형: 판별 card id -> 자료 lines that point to its subject (same era) without giving its answer away.
 export function chainIndex(cards, sets = []) {
   const key = (era, name) => era + '|' + name;

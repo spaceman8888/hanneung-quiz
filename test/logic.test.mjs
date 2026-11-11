@@ -7,7 +7,7 @@ import { today, normalize, isShort, ERAS,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
   gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
-  RETRY_GAP, current, logShown, logAnswer, dayGoal, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
+  RETRY_GAP, current, logShown, logAnswer, dayGoal, cheatSheet, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -891,4 +891,38 @@ test('mergeIds: a merged card record moves to the kept card; both present → jo
   assert.deepEqual(mergeIds(notes, map, (a, b) => a + '\n' + b), { k1: 'a', k2: 'c\nb', x: 'd' });
   assert.deepEqual(mergeIds(notes, map), { k1: 'a', k2: 'c', x: 'd' });   // default: keep the kept card's
   assert.deepEqual(notes, { old1: 'a', old2: 'b', k2: 'c', x: 'd' });
+});
+
+test('cheatSheet: a subject gathers its 판별 facts and "when?" events (★ past-exam first, near-duplicates dropped), clues, question count; kings in reign order', () => {
+  const j = (id, front, back, group = '고려 왕') => ({ id, front, back, era: '고려', type: '판별', group });
+  const t = (id, front, back) => ({ id, front: front + ' — 어느 왕 때?', back, era: '고려', type: '시기' });
+  const cards = [
+    j('a', '고려 성종', '최승로의 시무 28조를 받아들임'),
+    j('b', '광종', '노비안검법을 실시해 호족을 약화시킴'),
+    j('c', '광종', '독자적인 연호를 사용함'),
+    t('d', '고려의 노비안검법 실시', '광종'),           // same as a fact → dropped
+    t('e', '고려의 주현공부법 실시', '광종'),
+    t('f', '고려의 12목 설치', '성종'),                 // 고려 성종 by its bare name
+    t('g', '처음으로 개경을 황도라 함', '태조'),         // a king with no 판별 card yet: still listed
+  ];
+  const sheet = cheatSheet(cards, { questions: [{ cards: ['c', 'e'] }, { cards: ['b'] }], sets: [{ era: '고려', subject: '광종', clues: ['쌍기', '광종 즉위', '과거'] }] });
+  assert.deepEqual(sheet.map(o => o.name), ['태조', '광종', '고려 성종']);   // reign order, not file order
+  const k = sheet.find(o => o.name === '광종');
+  assert.deepEqual(k.facts.map(f => (f.star ? '★' : '') + f.t), ['★노비안검법을 실시해 호족을 약화시킴', '★독자적인 연호를 사용함', '★주현공부법 실시']);
+  assert.deepEqual(k.clues, ['쌍기', '과거']);   // '광종 즉위' names the subject → left out
+  assert.equal(k.q, 2);
+  assert.deepEqual(sheet.find(o => o.name === '고려 성종').facts.map(f => f.t), ['최승로의 시무 28조를 받아들임', '12목 설치']);
+});
+
+test('cheatSheet on the real deck: every dynasty\'s kings in reign order, 광종 with its past-exam facts', async () => {
+  const { readFileSync } = await import('node:fs');
+  const cards = JSON.parse(readFileSync(new URL('../cards.json', import.meta.url)));
+  const g = JSON.parse(readFileSync(new URL('../gichul.json', import.meta.url)));
+  const sheet = cheatSheet(cards, g);
+  const names = group => sheet.filter(o => o.group === group).map(o => o.name);
+  const before = (group, a, b) => assert.ok(names(group).indexOf(a) < names(group).indexOf(b), `${group}: ${a} before ${b}`);
+  before('고려 왕', '태조 왕건', '광종'); before('고려 왕', '목종', '고려 현종'); before('고려 왕', '우왕', '공양왕');
+  before('조선 후기 왕', '숙종', '경종'); before('조선 후기 왕', '경종', '영조');
+  before('삼국 백제 왕', '무령왕', '성왕'); before('발해 왕', '대조영', '발해 무왕'); before('현대 정부', '박근혜 정부', '문재인 정부');
+  assert.ok(sheet.find(o => o.name === '광종').facts.filter(f => f.star).length >= 5);
 });

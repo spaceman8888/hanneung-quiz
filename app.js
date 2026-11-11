@@ -49,6 +49,7 @@ const mergeRecords = () => {
 let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
 let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   // current question: "이미 알아요" pressed, when options showed, asked 기출형
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
+let sheet = [], cheatTab = 'king', cheatOpen = new Set();   // 쪽집게 노트: subjects (logic.cheatSheet), the tab, the eras opened
 let mapData = null, cardById = new Map();   // map.json { view, d }; id -> card
 let session = null, mode = 'normal', practiced = new Set();
 let lastStep = 0;   // 오늘 할 일 step the last batch was in (1 new · 2 missed reviews · 3 other reviews · 4 free)
@@ -63,7 +64,7 @@ const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 �
 const allCards = () => [...baseCards, ...custom];
 const studyCards = () => (deep || !hits.size ? allCards() : [...baseCards.filter(c => hits.has(c.id)), ...custom]);
 const show = id => {
-  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock', 'cheer'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock', 'cheer', 'cheat'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
@@ -174,6 +175,64 @@ function renderToday(ts) {
   $('todayWarn').hidden = !warnText;
   $('todayWarn').textContent = warnText;
 }
+
+// 쪽집게 노트 — tabs by kind of subject (from its 판별 group), eras inside, each subject with what it is known for.
+const CHEAT_TABS = [['king', '👑 왕·정부'], ['state', '🏛 나라·시대'], ['person', '👤 인물'], ['org', '🏢 단체·제도'], ['event', '⚔ 사건·정책'],
+  ['heritage', '🏺 문화유산'], ['etc', '🗺 지역·풍속'], ['confuse', '⚠ 헷갈리는 짝'], ['timeline', '📅 연표·순서']];
+const cheatTabOf = g => (/왕$|시기$/.test(g) || g === '현대 정부' ? 'king' : /국가$/.test(g) || g === '선사 시대' ? 'state' : /인물$/.test(g) ? 'person'
+  : /단체$|독립군$|기구$|조직$|군영$|제도$|제도·단체$|제도·사상$|의병$|사절단$|신문$|학교$|종교$|정부$/.test(g) ? 'org'
+  : /사건$|조약$|개혁$|대외 관계$|개헌$|남북 관계$|선언$|정책$|열강$/.test(g) ? 'event'
+  : /문화재$|건축·탑$|편찬물$|유산$|근대 시설$/.test(g) ? 'heritage' : 'etc');
+
+function renderCheat() {
+  const day = L.dayOf(), q = $('cheatQ').value.trim(), star = $('cheatStar').checked, weak = $('cheatWeak').checked;
+  $('cheatTabs').replaceChildren(...CHEAT_TABS.map(([k, label]) => {
+    const b = btn(label, () => { cheatTab = k; renderCheat(); });
+    b.classList.toggle('on', k === cheatTab);
+    b.setAttribute('aria-pressed', String(k === cheatTab));
+    return b;
+  }));
+  const body = $('cheatBody'), time = cheatTab === 'timeline';
+  $('cheatTimeline').hidden = !time;
+  $('cheatCtl').hidden = time;
+  body.className = $('cheatHide').value ? 'hide-' + $('cheatHide').value : '';
+  const byEra = new Map(), put = (era, row) => byEra.set(era, [...(byEra.get(era) ?? []), row]);
+  const has = t => !q || t.includes(q);
+  if (cheatTab === 'confuse') {
+    for (const n of notes) for (const t of n.topics) for (const it of t.items) {
+      if (!it.confuse || !has(it.head + it.confuse + (it.memo ?? ''))) continue;
+      const d = el('div', null, 'subj');
+      d.append(el('b', it.head), el('p', '⚠ ' + it.confuse));
+      if (it.memo) d.append(el('p', '🔑 ' + it.memo, 'muted'));
+      put(n.era, d);
+    }
+  } else if (!time) for (const o of sheet) {
+    if (cheatTabOf(o.group) !== cheatTab) continue;
+    const { facts, ids } = o;   // the whole list; ★ marks what past exams used
+    if ((star && !o.q && !facts.some(f => f.star)) || !has(o.name + ' ' + facts.map(f => f.t).join(' ') + ' ' + o.clues.join(' '))) continue;
+    const pct = Math.round(100 * ids.reduce((s, id) => s + L.recall(progress[id], day), 0) / Math.max(1, ids.length));
+    if (weak && pct >= 70) continue;
+    const d = el('div', null, 'subj'), head = el('div', null, 'subjHead'), ul = el('ul');
+    head.append(el('b', o.name, 'sname'), el('span', [o.q && `기출 ${o.q}문항`, `내 기억 ${pct}%`].filter(Boolean).join(' · '), 'muted'),
+      btn('풀기', () => { noteIds = new Set(ids); enterMode('note'); }));
+    for (const f of facts) ul.append(el('li', (f.star ? '★ ' : '') + f.t));
+    d.append(head, ul);
+    if (o.clues.length) d.append(el('p', '기출 단서: ' + o.clues.slice(0, 8).join(' · '), 'clues muted'));
+    put(o.era, d);
+  }
+  const n = [...byEra.values()].reduce((s, l) => s + l.length, 0);
+  $('cheatSum').textContent = time ? '' : n ? `${n}개${q ? ` · '${q}' 찾음` : ''} · 시대를 눌러 펼치세요` : '해당하는 것이 없어요.';
+  body.replaceChildren(...L.ERAS.filter(e => byEra.has(e)).map(e => {
+    const d = el('details'), k = cheatTab + e;
+    d.open = !!q || cheatOpen.has(k);
+    d.ontoggle = () => (d.open ? cheatOpen.add(k) : cheatOpen.delete(k));
+    d.append(el('summary', `${e} · ${byEra.get(e).length}`), ...byEra.get(e));
+    return d;
+  }));
+  show('cheat');
+}
+$('cheatBody').onclick = e => { const t = e.target.closest('.sname, li'); if (t && $('cheatBody').className) t.classList.toggle('shown'); };
+$('cheatQ').oninput = $('cheatStar').onchange = $('cheatWeak').onchange = $('cheatHide').onchange = () => renderCheat();
 
 function renderCheer() {
   const s = st();
@@ -890,6 +949,8 @@ window.onpopstate = () => {
 };
 $('notesBack').onclick = () => (!noteFrom && history.state === 'era' ? history.go(-2) : goHome());
 $('notesBtn').onclick = () => renderNotes();
+$('cheatBtn').onclick = () => { renderCheat(); scrollTo(0, 0); };
+$('cheatBack').onclick = goHome;
 $('hideKeys').onchange = e => {
   hideKeys = e.target.checked;
   save('hideKeys', hideKeys);
@@ -921,6 +982,7 @@ try {
   if (Object.keys(mergedIds).some(id => id in progress || id in myNotes)) { mergeRecords(); save('progress', progress); save('myNotes', myNotes); }
 } catch {}
 cardById = new Map(allCards().map(c => [c.id, c]));
+sheet = L.cheatSheet(baseCards, gichul ?? {});
 $('photoBtn').hidden = !allCards().some(c => c.type === '사진');
 renderHome();
 try {

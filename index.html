@@ -91,6 +91,17 @@
   .cheerCard { text-align:center; margin-top:40px; } .cheerCard .big { font-size:26px; font-weight:800; margin:8px 0; } .streakBig { font-size:20px; font-weight:700; color:var(--accent); }
   .cheerCard button { width:100%; }
   .row > .small { flex:0 0 auto; }
+  #cheatTabs { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; } #cheatTabs button { padding:6px 10px; font-size:14px; border-radius:999px; }
+  #cheatTabs button.on { border:2px solid var(--accent); color:var(--accent); font-weight:600; }
+  .cheatCtl label { display:flex; gap:6px; align-items:center; font-size:15px; } .cheatCtl input[type=checkbox] { width:auto; margin:0; }
+  #cheatBody details, #cheatTimeline details { background:var(--card); border:1px solid var(--line); border-radius:10px; margin:8px 0; padding:8px 12px; }
+  #cheatBody summary, #cheatTimeline summary { font-weight:600; padding:4px 0; }
+  #cheatTimeline table { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; } #cheatTimeline td, #cheatTimeline th { border:1px solid var(--line); padding:4px 6px; text-align:left; }
+  .subj { border-top:1px solid var(--line); padding:10px 0; } .subjHead { display:flex; align-items:center; gap:8px; }
+  .subjHead .sname { flex:1; font-size:18px; } .subjHead .muted { font-size:13px; text-align:right; } .subjHead button { padding:4px 10px; font-size:13px; }
+  .subj ul { margin:6px 0; padding-left:18px; } .subj li { margin:4px 0; word-break:keep-all; } .subj p { margin:4px 0; word-break:keep-all; }
+  .subj .clues { font-size:13px; }
+  .hide-name .sname:not(.shown), .hide-facts .subj li:not(.shown) { color:transparent; background:var(--line); border-radius:4px; cursor:pointer; }
   .inl { display:flex; gap:12px; margin:8px 0; } .inl label { display:flex; align-items:center; gap:6px; } .inl input { width:5.5em; }
   #planSum { word-break:keep-all; } #planTable { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
   #planTable td, #planTable th { border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; vertical-align:top; word-break:keep-all; }
@@ -122,7 +133,8 @@
         <button id="chainBtn" hidden>기출형 문제</button><button id="weakBtn">자주 틀린 카드</button>
         <button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button>
         <button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button>
-        <button id="notesBtn" hidden>핵심 노트</button><button id="toGuide">가이드</button>
+        <button id="cheatBtn">쪽집게 노트</button><button id="notesBtn" hidden>핵심 노트</button>
+        <button id="toGuide">가이드</button>
         <button id="toManage">관리 · 백업</button>
       </div>
       <h2>라운드</h2>
@@ -219,6 +231,45 @@
     <div id="mockList"></div>
   </section>
 
+  <section id="cheat" hidden>
+    <header><button id="cheatBack">← 홈</button><h1>쪽집게 노트</h1></header>
+    <div id="cheatTabs" role="group" aria-label="쪽집게 노트 종류"></div>
+    <div class="cheatCtl" id="cheatCtl">
+      <input id="cheatQ" type="search" placeholder="찾기: 광종, 균역법, 신간회…" aria-label="쪽집게 노트에서 찾기">
+      <div class="row"><label><input type="checkbox" id="cheatStar" checked> 기출에 나온 대상만</label><label><input type="checkbox" id="cheatWeak"> 약한 것만</label></div>
+      <select id="cheatHide" aria-label="가리고 떠올리기"><option value="">다 보기</option><option value="name">이름 가리기 — 업적 보고 누구?</option><option value="facts">내용 가리기 — 이름 보고 업적은?</option></select>
+    </div>
+    <p id="cheatSum" class="muted"></p>
+    <div id="cheatBody"></div>
+    <div id="cheatTimeline" hidden>
+    <details open><summary>뼈대 연표</summary>
+      <table>
+        <tr><th>연도</th><th>사건</th></tr>
+        <tr><td>676</td><td>신라 삼국 통일</td></tr>
+        <tr><td>698</td><td>발해 건국</td></tr>
+        <tr><td>918 · 936</td><td>고려 건국 · 후삼국 통일</td></tr>
+        <tr><td>1170</td><td>무신 정변</td></tr>
+        <tr><td>1231 · 1270</td><td>몽골 침입 시작 · 개경 환도</td></tr>
+        <tr><td>1392</td><td>조선 건국</td></tr>
+        <tr><td>1592 · 1636</td><td>임진왜란 · 병자호란</td></tr>
+        <tr><td>1876</td><td>강화도 조약</td></tr>
+        <tr><td>1894</td><td>동학 농민 운동 · 갑오개혁</td></tr>
+        <tr><td>1910</td><td>국권 피탈</td></tr>
+        <tr><td>1919</td><td>3·1 운동 · 임시 정부</td></tr>
+        <tr><td>1945 · 1948 · 1950</td><td>광복 · 정부 수립 · 6·25 전쟁</td></tr>
+        <tr><td>1960 · 1987</td><td>4·19 혁명 · 6월 민주 항쟁</td></tr>
+      </table>
+    </details>
+    <details open><summary>순서 앞글자</summary><ul>
+      <li><b>조선 왕:</b> 태정태세문단세 예성연중인명선 광인효현숙경영 정순헌철고순</li>
+      <li><b>고려 초 왕:</b> 태혜정광경성목현</li>
+      <li><b>일제 통치:</b> 10년대 무단 → 20년대 문화 → 30년대 민족 말살</li>
+      <li><b>현대 정부:</b> 이승만 → 장면 내각 → 박정희 → 전두환 → 노태우 → 김영삼 → 김대중 → 노무현 → 이명박 → 박근혜 → 문재인</li>
+      <li>시대마다 큰 흐름은 핵심 노트 맨 위 화살표 줄에 있어요.</li>
+    </ul></details>
+    </div>
+  </section>
+
   <section id="guide" hidden>
     <header><button id="guideBack">← 홈</button><h1>사용 가이드</h1></header>
     <h2>이렇게 공부하세요</h2>
@@ -250,8 +301,8 @@
       <li><b>키워드 2~3개로 기억하기.</b> 한능검은 자료 속 키워드로 대상을 알아보는 시험이에요. 예: 광종 — 노비안검법·과거제·광덕 연호.</li>
       <li><b>'왜?'를 붙이기.</b> 사실마다 원인과 결과를 한 문장으로 말해 보세요. 예: 균역법 — 군포 2필이 무거워 1필로 줄이고, 모자란 돈은 결작·어염세로 메웠다.</li>
       <li><b>헷갈리는 짝은 나란히.</b> 따로 외우면 섞여요. 나란히 놓고 다른 점 하나를 찾으세요. 예: 6조 직계제(태종·세조, 왕권 강화) ↔ 의정부 서사제(세종, 재상과 협의). 노트의 ⚠ 칸이 이런 짝이에요.</li>
-      <li><b>연도는 뼈대만.</b> 가이드의 '뼈대 연표'만 외우고 나머지는 '무엇 직후, 무엇 직전'으로 붙이세요. 순서 문제가 쉬워져요.</li>
-      <li><b>순서는 앞글자로.</b> 조선 왕은 '태정태세문단세 예성연중인명선…'처럼 앞글자를 노래처럼 외우세요. 가이드의 '순서 앞글자'를 보세요.</li>
+      <li><b>연도는 뼈대만.</b> 쪽집게 노트의 '뼈대 연표'만 외우고 나머지는 '무엇 직후, 무엇 직전'으로 붙이세요. 순서 문제가 쉬워져요.</li>
+      <li><b>순서는 앞글자로.</b> 조선 왕은 '태정태세문단세 예성연중인명선…'처럼 앞글자를 노래처럼 외우세요. 쪽집게 노트의 '순서 앞글자'를 보세요.</li>
       <li><b>사진은 시대·장소와 묶기.</b> 문화유산은 생김새 하나, 시대, 지역을 함께 기억하세요. 예: 무량수전 — 배흘림기둥·고려·영주 부석사.</li>
       <li><b>틀린 보기의 주인도 맞히기.</b> 오답 보기가 누구 이야기인지까지 알면 한 문제로 다섯 개를 배워요. 보기 밑 작은 글씨가 그 답이에요.</li>
       <li><b>섞어서 풀기.</b> 한 시대만 풀면 쉽게 느껴지지만 시험엔 섞여 나와요. 배운 시대들을 함께 골라 섞어 푸세요.</li>
@@ -261,31 +312,7 @@
       <li><b>안 외워지면 연상으로.</b> 사건과 왕처럼 이유 없이 짝지어진 것은 소리가 비슷한 말로 엉뚱한 장면을 만들면 붙어요. 예: '근육'왕 근초고가 왜에 칠지도를 던져 줌. 앱의 🧠 연상보다 내 것이 더 잘 떠오르면 ✏️ 메모에 적으세요.</li>
       <li><b>자기 전 10분 복습.</b> 자는 동안 그날 외운 것이 굳어요. 밤새우기보다 자는 게 점수에 나아요.</li>
     </ol>
-    <details><summary>뼈대 연표</summary>
-      <table>
-        <tr><th>연도</th><th>사건</th></tr>
-        <tr><td>676</td><td>신라 삼국 통일</td></tr>
-        <tr><td>698</td><td>발해 건국</td></tr>
-        <tr><td>918 · 936</td><td>고려 건국 · 후삼국 통일</td></tr>
-        <tr><td>1170</td><td>무신 정변</td></tr>
-        <tr><td>1231 · 1270</td><td>몽골 침입 시작 · 개경 환도</td></tr>
-        <tr><td>1392</td><td>조선 건국</td></tr>
-        <tr><td>1592 · 1636</td><td>임진왜란 · 병자호란</td></tr>
-        <tr><td>1876</td><td>강화도 조약</td></tr>
-        <tr><td>1894</td><td>동학 농민 운동 · 갑오개혁</td></tr>
-        <tr><td>1910</td><td>국권 피탈</td></tr>
-        <tr><td>1919</td><td>3·1 운동 · 임시 정부</td></tr>
-        <tr><td>1945 · 1948 · 1950</td><td>광복 · 정부 수립 · 6·25 전쟁</td></tr>
-        <tr><td>1960 · 1987</td><td>4·19 혁명 · 6월 민주 항쟁</td></tr>
-      </table>
-    </details>
-    <details><summary>순서 앞글자</summary><ul>
-      <li><b>조선 왕:</b> 태정태세문단세 예성연중인명선 광인효현숙경영 정순헌철고순</li>
-      <li><b>고려 초 왕:</b> 태혜정광경성목현</li>
-      <li><b>일제 통치:</b> 10년대 무단 → 20년대 문화 → 30년대 민족 말살</li>
-      <li><b>현대 정부:</b> 이승만 → 장면 내각 → 박정희 → 전두환 → 노태우 → 김영삼 → 김대중 → 노무현 → 이명박 → 박근혜 → 문재인</li>
-      <li>시대마다 큰 흐름은 핵심 노트 맨 위 화살표 줄에 있어요.</li>
-    </ul></details>
+    <p class="muted">뼈대 연표와 순서 앞글자는 더보기 → <b>쪽집게 노트</b> → 📅 연표·순서에 있어요.</p>
 
     <h2>화면 설명</h2>
     <details><summary>홈 화면</summary><ul>
@@ -324,6 +351,7 @@
       <li><b>실전 채점:</b> 종이로 푼 기출의 점수와 틀린 번호 기록. 57~79회는 틀린 문항마다 무엇을 물었는지 보여 주고, 그 카드만 풀 수 있어요.</li>
       <li><b>마무리 학습:</b> 시험 7일 전부터 큰 버튼이 바뀐 것. 배운 카드 중 시험날 기억이 가장 약할 카드부터, 하루 한 번씩.</li>
       <li><b>순서 문제·사진 고르기:</b> 연표와 문화유산 감각 연습. 복습 일정에는 반영되지 않아요.</li>
+      <li><b>쪽집게 노트:</b> 왕·정부·시기, 나라, 인물, 단체·제도, 사건·정책, 문화유산, 지역·풍속마다 '무엇을 했나'를 한눈에. 왕은 재위 순서대로, ★는 기출에 나온 사실('기출에 나온 대상만'을 끄면 기출에 안 나온 대상도 보여요), '기출 단서'는 시험 자료에 나온 낱말이에요. '이름 가리기'로 업적 보고 누구인지, '내용 가리기'로 이름 보고 업적을 떠올리세요(가린 곳을 누르면 보여요). '약한 것만'은 내 기억 70% 미만, '풀기'는 그 대상 카드만 풀어요. ⚠ 헷갈리는 짝, 📅 연표·순서도 여기 있어요.</li>
       <li><b>핵심 노트:</b> 시대 흐름과 항목별 설명, ⚠ 헷갈리는 점, 🔑 외우는 법. '가리고 떠올리기'를 켜면 핵심어를 가려요. 항목마다 그 카드만 풀 수 있어요.</li>
     </ul></details>
     <details><summary>관리</summary><ul>
