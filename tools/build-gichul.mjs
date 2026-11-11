@@ -1,5 +1,6 @@
 // Builds gichul.json from the past-exam analysis (docs/content/gichul/57~79.json) and cards.json.
-// questions: past questions whose linked cards all exist (exam score, new-card priority, 실전 채점: n = 회차, q = number, s = subject).
+// questions: past questions whose linked cards all exist (exam score, new-card priority, 실전 채점: n = 회차, q = number, s = subject),
+// plus the photo/map cards of those cards.
 // sets: 판별 questions' clue keywords for subjects that have 판별 cards (기출형 자료); `vague: true` = checked, doesn't point to the subject.
 // Run: node tools/build-gichul.mjs
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -20,8 +21,11 @@ const facts = q => {
   for (const era of [cardEra(q), q.era]) { const f = judge.filter(c => c.front === q.subject && c.era === era); if (f.length) return f; }
   return [];
 };
+// A photo or map card (`of` = the text card it pictures) goes with every question its text card does.
+const media = cards.filter(c => c.of);
+const withMedia = ids => [...ids, ...media.filter(c => ids.includes(c.of) && !ids.includes(c.id)).map(c => c.id)];
 const questions = all.filter(q => cardEra(q))
-  .map(q => ({ era: cardEra(q), n: q.n, q: q.q, s: q.subject, cards: [...new Set([...q.cards, ...facts(q).map(c => c.id)])] }));
+  .map(q => ({ era: cardEra(q), n: q.n, q: q.q, s: q.subject, cards: withMedia([...new Set([...q.cards, ...facts(q).map(c => c.id)])]) }));
 
 const seen = new Set();
 const sets = [];

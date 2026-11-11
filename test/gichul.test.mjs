@@ -43,3 +43,14 @@ test('no past question points at a missing card (removing a card must hand its l
   for (const f of readdirSync(dir).filter(f => f.endsWith('.json')))
     for (const q of JSON.parse(readFileSync(new URL(f, dir)))) for (const id of q.cards ?? []) assert.ok(ids.has(id), `${f} q${q.q}: ${id}`);
 });
+
+test('gichul.json: a photo/map card goes with every past question its text card (of) is in', () => {
+  const byId = new Map(cards.map(c => [c.id, c]));
+  for (const q of questions) for (const id of q.cards) {
+    const c = byId.get(id);
+    if (c.of) assert.ok(q.cards.includes(c.of), `${id} without ${c.of}`);
+    for (const m of cards.filter(x => x.of === id)) assert.ok(q.cards.includes(m.id), `${m.id} missing next to ${id}`);
+  }
+  const media = new Set(questions.flatMap(q => q.cards).filter(id => byId.get(id).of));
+  assert.ok(media.size >= 130, String(media.size));
+});
