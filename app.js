@@ -47,6 +47,7 @@ const mergeRecords = () => {
   myNotes = L.mergeIds(myNotes, mergedIds, (a, b) => a + '\n' + b);
 };
 let gichul = null, chainIdx = new Map();   // gichul.json { questions, sets }; 판별 card id -> 자료 lines
+let asked = null;   // the question as asked: { answer, via } — a photo is asked its period or a fact of its state, not its name
 let sure = false, shownAt = null, chars = 0, reveal = null, asChain = false;   // current question: "이미 알아요" pressed, when options showed, asked 기출형
 let notes = [], noteIdx = new Map(), noteIds = null, noteFrom = false;
 let sheet = [], cheatTab = 'king', cheatOpen = new Set();   // 쪽집게 노트: subjects (logic.cheatSheet), the tab, the eras opened
@@ -501,7 +502,8 @@ function renderQuestion() {
   $('qTag').textContent = `${card.era} · ${lines ? '기출형' : card.type}`;
   $('qClues').hidden = !lines;
   $('qClues').textContent = lines ? '(가) ' + lines[Math.floor(Math.random() * lines.length)] : '';
-  $('qFront').textContent = lines ? '(가)에 대한 설명으로 옳은 것은?' : card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
+  const photo = card.type === '사진' && card.period ? L.photoAsk(card, allCards(), { prefer: hits }) : null;
+  $('qFront').textContent = photo ? photo.prompt : lines ? '(가)에 대한 설명으로 옳은 것은?' : card.type === '판별' ? `${card.front}에 대한 설명으로 옳은 것은?` : card.front;
   $('choices').className = 'choices';
   $('flag').hidden = false;
   $('known').hidden = session.saved.has(card.id);   // a re-asked card is already graded
@@ -510,9 +512,10 @@ function renderQuestion() {
   sure = false;
   $('known').classList.remove('on');
   $('known').setAttribute('aria-pressed', 'false');
-  const opts = L.pickChoices(card, allCards());
+  const opts = photo ? photo.opts : L.pickChoices(card, allCards());
+  asked = { answer: photo ? photo.answer : card.back, via: photo?.via ?? null, photo: !!photo };
   const buttons = opts.map(choice => {
-    const b = btn(choice, () => onAnswer(choice === card.back, b));
+    const b = btn(choice, () => onAnswer(choice === asked.answer, b));
     b.dataset.choice = choice;
     return b;
   });
@@ -540,15 +543,15 @@ function onAnswer(correct, button) {
   if (correct) doneCount++;
   button?.classList.add(correct ? 'ok' : 'bad');
   for (const b of $('choices').children) {
-    if (b.dataset.choice === card.back) { b.classList.add('ok'); continue; }
-    const who = ownerOf(card, b.dataset.choice);
+    if (b.dataset.choice === asked.answer) { b.classList.add('ok'); continue; }
+    const who = asked.photo && !asked.via ? null : ownerOf(asked.via ?? card, b.dataset.choice);
     if (who) { const s = document.createElement('small'); s.textContent = who; b.append(s); }
   }
   const p = document.createElement('p');
   p.className = correct ? 'ok' : 'bad';
-  p.textContent = !correct ? `정답: ${card.back}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
+  p.textContent = !correct ? `정답: ${asked.answer}` : g === 2 ? '정답! · 고민한 카드라 조금 일찍 다시 나와요' : '정답!';
   const log = progress[id];
-  $('feedback').replaceChildren(p, el('p', `이 카드: ${log.shown ?? 1}번 나옴 · 맞힘 ${log.right ?? 0} · 틀림 ${log.wrong ?? 0}`
+  $('feedback').replaceChildren(p, ...(asked.photo ? [el('p', `📷 사진: ${card.back} · ${card.period}`)] : []), el('p', `이 카드: ${log.shown ?? 1}번 나옴 · 맞힘 ${log.right ?? 0} · 틀림 ${log.wrong ?? 0}`
     + (correct ? '' : ` · 다른 문제 ${L.RETRY_GAP}개 뒤에 다시 나와요`), 'muted'));
   if (asChain) $('feedback').append(el('p', `(가) ${card.front}`));
   if (!correct && sure && button) $('feedback').append(el('p', '확실하다고 했는데 틀렸어요. 이런 오답은 지금 바로잡으면 오래 기억돼요.', 'muted'));

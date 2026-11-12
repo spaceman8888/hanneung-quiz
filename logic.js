@@ -156,11 +156,14 @@ function mixEras(cards, rng) {
 
 // One card per subject while other subjects are left: a sibling just answered gives the next one away and inflates its grade.
 const subjectOf = c => (c.type === '판별' ? c.front : c.back);
+// Also one photo/map card per batch while other cards are left, so they come mixed in, not in a run.
+const MEDIA = new Set(['사진', '지도']);
 function oneEach(list, size) {
   const seen = new Set(), first = [], rest = [];
+  let media = 0;
   for (const c of list) {
-    if (seen.has(subjectOf(c))) rest.push(c);
-    else { seen.add(subjectOf(c)); first.push(c); }
+    if (seen.has(subjectOf(c)) || (MEDIA.has(c.type) && media)) rest.push(c);
+    else { seen.add(subjectOf(c)); first.push(c); media += MEDIA.has(c.type); }
   }
   return [...first, ...rest].slice(0, size);
 }
@@ -587,6 +590,27 @@ export function project(lat, lon) {
   return [r1((lon - MAP.lon0) * COS * MAP.k), r1((MAP.lat1 - lat) * MAP.k)];
 }
 export const MAP_VIEW = `0 0 ${project(MAP.lat0, MAP.lon1).join(' ')}`;
+
+// A photo card is asked the way the exam does: not its name but when it was made — or, for prehistory, the Three
+// Kingdoms, 통일 신라 and 발해, what is true of the state that made it (one of that subject's 판별 facts, past-exam ones
+// first), about half the time. Period options are the ones nearest in time, never one that would also be right.
+export const PERIODS = ['구석기', '신석기', '청동기', '철기', '고조선', '고구려', '백제', '가야', '신라', '통일 신라', '발해',
+  '고려', '조선 전기', '조선 후기', '개항기', '대한 제국', '일제 강점기', '현대'];
+const PERIOD_SUBJECT = { 구석기: '구석기 시대', 신석기: '신석기 시대', 청동기: '청동기 시대', 고구려: '고구려', 백제: '백제', 신라: '신라',
+  '통일 신라': '통일 신라', 발해: '발해' };
+const PREHISTORY = new Set(['구석기', '신석기', '청동기']);
+export function photoAsk(card, cards, { rng = Math.random, prefer = null } = {}) {
+  const facts = cards.filter(c => c.type === '판별' && c.front === PERIOD_SUBJECT[card.period]);
+  const pool = prefer && facts.some(c => prefer.has(c.id)) ? facts.filter(c => prefer.has(c.id)) : facts;
+  const via = pool.length && rng() < 0.5 ? pool[Math.floor(rng() * pool.length)] : null;
+  const pre = PREHISTORY.has(card.period);
+  if (via) return { prompt: `${pre ? '사진 속 유물을 사용한 시대' : '사진 속 문화유산을 만든 나라'}에 대한 설명으로 옳은 것은?`, answer: via.back, opts: pickChoices(via, cards, rng), via };
+  const i = PERIODS.indexOf(card.period);
+  const near = PERIODS.filter(p => p !== card.period && !related(p, card.period))
+    .sort((a, b) => Math.abs(PERIODS.indexOf(a) - i) - Math.abs(PERIODS.indexOf(b) - i));
+  return { prompt: pre ? '사진 속 유물을 사용한 시대는?' : '사진 속 문화유산이 만들어진 시대(나라)는?', answer: card.period,
+    opts: shuffle([card.period, ...shuffle(near.slice(0, 6), rng).slice(0, CHOICES - 1)], rng) };
+}
 
 // The card a wrong option belongs to: same kind of answer, same era first. 시기·지도 options (kings, places) have no single owner.
 export function ownerCard(card, choice, cards) {

@@ -7,7 +7,7 @@ import { today, normalize, isShort, ERAS,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
   gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
-  RETRY_GAP, current, logShown, logAnswer, dayGoal, cheatSheet, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
+  RETRY_GAP, current, logShown, logAnswer, dayGoal, cheatSheet, photoAsk, PERIODS, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -925,4 +925,35 @@ test('cheatSheet on the real deck: every dynasty\'s kings in reign order, 광종
   before('조선 후기 왕', '숙종', '경종'); before('조선 후기 왕', '경종', '영조');
   before('삼국 백제 왕', '무령왕', '성왕'); before('발해 왕', '대조영', '발해 무왕'); before('현대 정부', '박근혜 정부', '문재인 정부');
   assert.ok(sheet.find(o => o.name === '광종').facts.filter(f => f.star).length >= 5);
+});
+
+test('buildBatch: one photo/map card per batch while other cards are left', () => {
+  const photo = (id, back) => ({ ...mk(id, back), type: '사진' });
+  const cs = [photo('p1', '탑1'), photo('p2', '탑2'), { ...mk('m1', '전투1'), type: '지도' }, mk('t1', 'a'), mk('t2', 'b'), mk('t3', 'c')];
+  assert.deepEqual(buildBatch(cs, {}, { day: 0, size: 4 }).map(c => c.id), ['p1', 't1', 't2', 't3']);
+  assert.deepEqual(buildBatch(cs.slice(0, 3), {}, { day: 0, size: 4 }).map(c => c.id), ['p1', 'p2', 'm1']);   // nothing else left
+});
+
+test('photoAsk: the period it was made, with nearby periods and never one that would also be right — or a fact of the state that made it', () => {
+  const p = { id: 'p', type: '사진', era: '통일신라·발해', front: '사진 속 문화유산의 이름은?', back: '감은사지 삼층 석탑', period: '통일 신라' };
+  const facts = ['9주 5소경을 설치함', '국학을 설치함'].map((b, i) => ({ id: 'j' + i, type: '판별', front: '통일 신라', back: b, era: '통일신라·발해', group: '통일신라·발해 국가' }));
+  const other = ['5경 15부 62주를 둠', '정혜쌍수를 내세움', '22담로에 왕족 파견', '중방이 권력 기구'].map((b, i) => ({ id: 'o' + i, type: '판별', front: ['발해', '고려', '백제', '고려'][i], back: b, era: '통일신라·발해', group: '통일신라·발해 국가' }));
+  const cards = [p, ...facts, ...other];
+  for (let s = 1; s <= 20; s++) {
+    const a = photoAsk(p, cards, { rng: seeded(s) });
+    assert.ok(a.opts.includes(a.answer) && new Set(a.opts).size === a.opts.length, JSON.stringify(a));
+    if (a.via) { assert.ok(facts.includes(a.via)); assert.match(a.prompt, /만든 나라에 대한 설명/); }
+    else { assert.equal(a.answer, '통일 신라'); assert.equal(a.opts.length, 5); assert.ok(!a.opts.includes('신라')); }
+  }
+  const kinds = new Set(Array.from({ length: 20 }, (_, s) => !!photoAsk(p, cards, { rng: seeded(s + 1) }).via));
+  assert.equal(kinds.size, 2);   // both kinds come up
+  const goryeo = { ...p, period: '고려', back: '월정사 팔각 구층 석탑' };
+  for (let s = 1; s <= 5; s++) assert.equal(photoAsk(goryeo, cards, { rng: seeded(s) }).answer, '고려');   // no 판별 subject: always the period
+  assert.ok(!photoAsk({ ...p, period: '대한 제국' }, cards, { rng: seeded(3) }).opts.includes('개항기'));
+});
+
+test('every photo card period is a known period', async () => {
+  const { readFileSync } = await import('node:fs');
+  const cards = JSON.parse(readFileSync(new URL('../cards.json', import.meta.url)));
+  for (const c of cards.filter(c => c.type === '사진')) assert.ok(PERIODS.includes(c.period), `${c.id} ${c.period}`);
 });
