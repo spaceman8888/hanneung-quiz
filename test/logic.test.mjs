@@ -7,7 +7,7 @@ import { today, normalize, isShort, ERAS,
   buildBatch, weakBatch, counts, createSession, submit,
   loadJSON, validateBackup, isStats,
   gichulHits, byHits, examScore, leaks, chainIndex, answerGrade, ownerCard, missLines, setMyNote, chainStyle, rounds, currentRound, mergeIds,
-  RETRY_GAP, current, logShown, logAnswer, dayGoal, cheatSheet, photoAsk, PERIODS, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
+  RETRY_GAP, current, logShown, logAnswer, dayGoal, cheatSheet, photoAsk, PERIODS, blankParts, lectureRows, rowBlanks, gradeBlank, blankGraduated, blankActive, bumpStreak, streakNow, weekDay, studyPlan, assignMocks, finalBatch, mockMisses, NEXT_EXAM } from '../logic.js';
 
 test('today formats local date', () => {
   assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
@@ -956,4 +956,33 @@ test('every photo card period is a known period', async () => {
   const { readFileSync } = await import('node:fs');
   const cards = JSON.parse(readFileSync(new URL('../cards.json', import.meta.url)));
   for (const c of cards.filter(c => c.type === '사진')) assert.ok(PERIODS.includes(c.period), `${c.id} ${c.period}`);
+});
+
+test('blankParts: blanks with hints, left-column names, added lines, ids by place', () => {
+  const r = blankParts('+{쌍기::후주에서 온 사람}의 건의로 {과거제::시험으로 관리 선발} 실시', 'x');
+  assert.equal(r.added, true);
+  assert.deepEqual(r.parts, [{ ans: '쌍기', hint: '후주에서 온 사람', k: false, id: 'x-0' }, '의 건의로 ', { ans: '과거제', hint: '시험으로 관리 선발', k: false, id: 'x-1' }, ' 실시']);
+  assert.deepEqual(blankParts('{광종::4대 왕::k}', 'y').parts[0], { ans: '광종', hint: '4대 왕', k: true, id: 'y-0' });
+  assert.deepEqual(blankParts('빈칸 없음').parts, ['빈칸 없음']);
+});
+
+test('lectureRows / rowBlanks: rows of sections and subsections in order, blank ids from their place', () => {
+  const lec = { n: 10, sections: [{ h: '1', title: 'a', rows: [['{태조::1대::k}', ['{흑창::빈민 구제}', '없음']]] },
+    { h: '2', title: 'b', sub: [{ title: '(1)', rows: [['중앙', ['{2군 6위::중앙군}']]] }] }] };
+  const rows = lectureRows(lec);
+  assert.deepEqual(rows.map(r => r.id), ['10-0-0', '10-1u0-0']);
+  assert.equal(rows[1].sub, '(1)');
+  assert.deepEqual(rowBlanks(rows[0]).map(b => [b.id, b.ans, b.k]), [['10-0-0-k-0', '태조', true], ['10-0-0-0-0', '흑창', false]]);
+});
+
+test('gradeBlank: right answers in a row graduate it; a miss starts over; one count a day by default', () => {
+  let m = gradeBlank(undefined, true, 1);
+  assert.deepEqual(m, { l: 'ok', d: 1, s: 1 });
+  assert.equal(gradeBlank(m, true, 1).s, 1);          // same day: not again
+  assert.equal(gradeBlank(m, true, 1, false).s, 2);   // unless counting every time
+  m = gradeBlank(m, true, 2);
+  assert.ok(blankGraduated(m, 2) && !blankActive(m, 2));
+  assert.ok(blankActive(m, 3) && !blankGraduated(m, 0));
+  assert.deepEqual(gradeBlank(m, false, 3), { l: 'bad', d: 3, s: 0 });
+  assert.ok(!blankActive({ p: true }, 2));            // kept as plain text
 });

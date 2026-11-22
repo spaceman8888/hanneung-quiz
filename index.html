@@ -101,6 +101,31 @@
   .subjHead .sname { flex:1; font-size:18px; } .subjHead .muted { font-size:13px; text-align:right; } .subjHead button { padding:4px 10px; font-size:13px; }
   .subj ul { margin:6px 0; padding-left:18px; } .subj li { margin:4px 0; word-break:keep-all; } .subj p { margin:4px 0; word-break:keep-all; }
   .subj .clues { font-size:13px; }
+  #blanks .bar { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 6px; } #blanks .bar button { border-radius:999px; padding:6px 12px; font-size:14px; }
+  #blanks .bar button.on { border:2px solid var(--accent); color:var(--accent); font-weight:600; }
+  #blanks .stat { font-size:14px; color:var(--muted); margin:6px 0 2px; } #blanks main, #blanks { padding-bottom:170px; }
+  #blanks details.set { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 12px; margin:16px 0; font-size:14px; }
+  #blanks details.set summary { font-weight:600; } #blanks details.set label { display:flex; gap:8px; align-items:center; margin:8px 0; } #blanks details.set input, #blanks details.set select { width:auto; }
+  #blanks details.set button { padding:6px 10px; margin:4px 4px 4px 0; font-size:13px; }
+  .blkRow { flex-wrap:wrap; } .blkRow progress { width:100%; height:6px; margin-top:4px; }
+  #blkBody h2 { font-size:17px; margin:22px 0 6px; } #blkBody h2 .n { color:var(--accent); font-size:22px; margin-right:6px; } #blkBody h3 { font-size:15px; margin:14px 0 4px; color:var(--muted); }
+  .blkTable { width:100%; border-collapse:collapse; background:var(--card); border-top:2px solid #5f6b5a; }
+  .blkTable td { border-bottom:1px solid var(--line); padding:8px; vertical-align:top; word-break:keep-all; font-size:16px; line-height:1.65; }
+  .blkTable td.k { width:30%; background:color-mix(in srgb, #5f6b5a 14%, var(--card)); text-align:center; font-weight:600; }
+  .blkTable ul { margin:0; padding-left:16px; } .blkTable li { margin:3px 0; }
+  .add { font-size:11px; color:var(--accent); border:1px solid var(--accent); border-radius:4px; padding:0 4px; margin-right:4px; vertical-align:1px; }
+  .q { display:inline-block; min-width:3.4em; padding:0 6px; margin:1px; border-radius:6px; border:1.5px dashed var(--accent); color:var(--accent); cursor:pointer; text-align:center; font-weight:600; line-height:1.5; }
+  .q.was-ok { border-color:var(--ok); color:var(--ok); } .q.was-bad { border-color:var(--bad); color:var(--bad); background:color-mix(in srgb, var(--bad) 8%, transparent); }
+  .q.sel { border-style:solid; border-width:2.5px; } .q.open { border-style:solid; background:#f6c9df; color:#222; }
+  .qa { font-weight:700; cursor:pointer; padding:0 2px; border-radius:4px; } .qa.ok { color:var(--ok); background:color-mix(in srgb, var(--ok) 12%, transparent); } .qa.bad { color:var(--bad); background:color-mix(in srgb, var(--bad) 12%, transparent); }
+  .qdone { border-bottom:2px dotted color-mix(in srgb, var(--ok) 70%, transparent); cursor:pointer; } .qdone.plain { border-bottom-color:var(--line); }
+  .gbar { position:fixed; left:0; right:0; bottom:0; z-index:5; background:var(--card); border-top:2px solid var(--accent); padding:10px 14px calc(12px + env(safe-area-inset-bottom)); box-shadow:0 -4px 12px rgba(0,0,0,.08); }
+  .gbar .in { max-width:480px; margin:0 auto; } .gbar .top { display:flex; align-items:baseline; gap:8px; } .gbar .top b { flex:1; font-size:18px; word-break:keep-all; }
+  .gbar .x { border:0; background:none; font-size:20px; color:var(--muted); padding:0 4px; } .gbar .note { color:var(--muted); font-size:13px; margin:2px 0 8px; word-break:keep-all; }
+  .gbar .hint { background:color-mix(in srgb, #f0c419 18%, var(--card)); border-radius:8px; padding:8px 10px; margin:4px 0 8px; font-size:15px; word-break:keep-all; }
+  .gbar .row { display:flex; gap:8px; margin:0; } .gbar .row button { flex:1; border-width:2px; border-radius:12px; padding:10px 8px; font-size:16px; font-weight:600; }
+  .gbar .y { color:var(--ok); border-color:var(--ok); } .gbar .n { color:var(--bad); border-color:var(--bad); } .gbar .main { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .gbar .link { border:0; background:none; color:var(--muted); font-size:13px; text-decoration:underline; padding:6px 0 0; }
   .hide-name .sname:not(.shown), .hide-facts .subj li:not(.shown) { color:transparent; background:var(--line); border-radius:4px; cursor:pointer; }
   .inl { display:flex; gap:12px; margin:8px 0; } .inl label { display:flex; align-items:center; gap:6px; } .inl input { width:5.5em; }
   #planSum { word-break:keep-all; } #planTable { border-collapse:collapse; width:100%; font-size:14px; margin:8px 0; }
@@ -133,7 +158,7 @@
         <button id="chainBtn" hidden>기출형 문제</button><button id="weakBtn">자주 틀린 카드</button>
         <button id="periodBtn">시기 맞히기</button><button id="judgeBtn">보기 판별</button>
         <button id="orderBtn">순서 문제</button><button id="photoBtn" hidden>사진 고르기</button>
-        <button id="cheatBtn">쪽집게 노트</button><button id="notesBtn" hidden>핵심 노트</button>
+        <button id="blanksBtn">빈칸 노트</button><button id="cheatBtn">쪽집게 노트</button><button id="notesBtn" hidden>핵심 노트</button>
         <button id="toGuide">가이드</button>
         <button id="toManage">관리 · 백업</button>
       </div>
@@ -229,6 +254,25 @@
     <p id="mockMsg"></p>
     <h2>실전 기록</h2>
     <div id="mockList"></div>
+  </section>
+
+  <section id="blanks" hidden>
+    <header><button id="blkBack">← 홈</button><h1 id="blkTitle">빈칸 노트</h1></header>
+    <div id="blkList"></div>
+    <div id="blkLecView" hidden>
+      <div class="bar" id="blkModes"></div>
+      <p class="stat" id="blkStat"></p>
+      <progress id="blkProg" max="100" value="0" aria-label="빈칸 진행률"></progress>
+      <div id="blkBody"></div>
+      <p><button id="blkReset">이 강 기록 지우기</button></p>
+    </div>
+    <details class="set"><summary>⚙ 설정</summary>
+      <label>연속 <select id="blkGrad" aria-label="졸업 기준"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="0">끄기</option></select>번 맞히면 빈칸 졸업(글로 보임)</label>
+      <label><input type="checkbox" id="blkOnce"> 같은 날 맞힌 건 한 번만 셈 (추천: 다른 날 다시 맞혀야 오래 남아요)</label>
+      <label><input type="checkbox" id="blkNames"> 왕·기구 이름(왼쪽 칸)도 빈칸</label>
+      <button id="blkUnplain">'그냥 보기'로 바꾼 말 모두 다시 빈칸으로</button> <button id="blkUngrad">졸업한 빈칸 모두 다시 빈칸으로</button>
+    </details>
+    <div class="gbar" id="gbar" hidden><div class="in" id="gin"></div></div>
   </section>
 
   <section id="cheat" hidden>
@@ -352,6 +396,7 @@
       <li><b>실전 채점:</b> 종이로 푼 기출의 점수와 틀린 번호 기록. 57~79회는 틀린 문항마다 무엇을 물었는지 보여 주고, 그 카드만 풀 수 있어요.</li>
       <li><b>마무리 학습:</b> 시험 7일 전부터 큰 버튼이 바뀐 것. 배운 카드 중 시험날 기억이 가장 약할 카드부터, 하루 한 번씩.</li>
       <li><b>순서 문제·사진 고르기:</b> 연표와 문화유산 감각 연습. 복습 일정에는 반영되지 않아요.</li>
+      <li><b>빈칸 노트:</b> 교재 요약 쪽(강 → 단원 → 표)을 그대로 따라 핵심어를 빈칸 ( ? )으로 가린 노트예요. 빈칸을 누르면 💡 힌트와 정답 보기, 속으로 말한 답과 같았으면 ○ 맞음, 아니면 ✕ 틀림. 답한 빈칸은 그 강에 있는 동안 초록·빨강 글로 남고, 강을 나갔다 오면 다시 빈칸이에요. 연속으로 맞히면(설정, 기본 2번·하루 한 번만 셈) 빈칸에서 졸업해 글로 보이고, '그냥 보기'로 바꾼 말도 글로 보여요(눌러서 다시 빈칸으로). '틀린 것만'으로 틀린 빈칸만 다시 풀어요. ＋추가는 교재에 없던 빈출 내용이에요.</li>
       <li><b>쪽집게 노트:</b> 왕·정부·시기, 나라, 인물, 단체·제도, 사건·정책, 문화유산, 지역·풍속마다 '무엇을 했나'를 한눈에. 왕은 재위 순서대로, ★는 기출에 나온 사실('기출에 나온 대상만'을 끄면 기출에 안 나온 대상도 보여요), '기출 단서'는 시험 자료에 나온 낱말이에요. '이름 가리기'로 업적 보고 누구인지, '내용 가리기'로 이름 보고 업적을 떠올리세요(가린 곳을 누르면 보여요). '약한 것만'은 내 기억 70% 미만, '풀기'는 그 대상 카드만 풀어요. ⚠ 헷갈리는 짝, 📅 연표·순서도 여기 있어요.</li>
       <li><b>핵심 노트:</b> 시대 흐름과 항목별 설명, ⚠ 헷갈리는 점, 🔑 외우는 법. '가리고 떠올리기'를 켜면 핵심어를 가려요. 항목마다 그 카드만 풀 수 있어요.</li>
     </ul></details>

@@ -6,7 +6,8 @@ const storage = (() => { try { return localStorage; } catch { return null; } })(
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const shapes = { deep: v => typeof v === 'boolean', progress: isObj, customCards: Array.isArray, stats: L.isStats, exam: v => typeof v === 'string', hideKeys: v => typeof v === 'boolean', recallFirst: v => typeof v === 'boolean', myNotes: isObj,
-  hours: L.isHours, mocks: v => Array.isArray(v) && v.every(L.isMock), streak: L.isStreak };
+  hours: L.isHours, mocks: v => Array.isArray(v) && v.every(L.isMock), streak: L.isStreak, blankMarks: isObj,
+  blankSet: v => isObj(v) && Number.isInteger(v.grad) && typeof v.once === 'boolean' && typeof v.names === 'boolean' };
 
 function load(key, fallback) {
   const r = L.loadJSON(storage, key, fallback);
@@ -38,6 +39,8 @@ let recallFirst = load('recallFirst', false);
 let deep = load('deep', false);   // study range: false = 기본 (cards past exams used) + my imported cards, true = 기본+심화
 let myNotes = load('myNotes', {});   // card id -> the learner's own note
 let hours = load('hours', { wd: 3, we: 6 });   // 시험 계획: study hours a weekday / a weekend day
+let blankMarks = load('blankMarks', {}), blankSet = load('blankSet', { grad: 2, once: true, names: true });   // 빈칸 노트 records, settings
+let blankLecs = null, blkLec = null, blkMode = 'all', blkCur = null, blkSeen = new Map();   // lectures; the open one, its mode, the selected blank, graded this visit
 let streak = load('streak', { last: '', n: 0 });   // 🔥 days in a row the day's goal was reached
 let mocks = load('mocks', []);   // 실전 채점: { n: 회차, date, score (null = not given), wrong: question numbers }
 let mergedIds = {};   // merged.json: merged duplicate card id -> the card kept
@@ -65,7 +68,7 @@ const EMPTY_MSG = { normal: '카드가 없어요.', period: '시기 카드가 �
 const allCards = () => [...baseCards, ...custom];
 const studyCards = () => (deep || !hits.size ? allCards() : [...baseCards.filter(c => hits.has(c.id)), ...custom]);
 const show = id => {
-  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock', 'cheer', 'cheat'].forEach(s => { $(s).hidden = s !== id; });
+  ['home', 'study', 'manage', 'notes', 'guide', 'rounds', 'planView', 'mock', 'cheer', 'cheat', 'blanks'].forEach(s => { $(s).hidden = s !== id; });
   if (id !== 'home' && !history.state) history.pushState(1, '');
 };
 const goHome = () => (history.state ? history.back() : renderHome());
@@ -234,6 +237,133 @@ function renderCheat() {
 }
 $('cheatBody').onclick = e => { const t = e.target.closest('.sname, li'); if (t && $('cheatBody').className) t.classList.toggle('shown'); };
 $('cheatQ').oninput = $('cheatStar').onchange = $('cheatWeak').onchange = $('cheatHide').onchange = () => renderCheat();
+
+// 빈칸 노트 — the textbook's lecture summaries with key terms as blanks (blanks.json, loaded when first opened).
+// A blank: tap → 💡 hint / show the answer → right or wrong. Answered blanks stay as green/red text while the lecture is
+// open; on the next visit they are blanks again, unless graduated (right N times in a row) or kept as plain text.
+async function blanksData() {
+  if (!blankLecs) try { const r = await fetch('blanks.json'); const d = r.ok ? await r.json() : null; if (Array.isArray(d)) blankLecs = d; } catch {}
+  return blankLecs;
+}
+const saveBlanks = () => { save('blankMarks', blankMarks); save('blankSet', blankSet); };
+const blkActive = id => L.blankActive(blankMarks[id], blankSet.grad);
+const lecNo = n => String(n).padStart(2, '0') + '강';   // as the textbook prints it: 02강
+const lecBlanks = lec => L.lectureRows(lec).flatMap(L.rowBlanks).filter(b => blankSet.names || !b.k);
+
+async function renderBlankList() {
+  blkLec = null; blkCur = null;
+  const lecs = await blanksData();
+  $('blkTitle').textContent = '빈칸 노트';
+  $('blkBack').textContent = '← 홈';
+  $('blkList').hidden = false; $('blkLecView').hidden = true; $('gbar').hidden = true;
+  $('blkList').replaceChildren(...(!lecs ? [el('p', '빈칸 노트를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.', 'muted')]
+    : [el('p', '강을 고르세요. 빈칸을 누르면 💡 힌트·정답 보기 → 맞음/틀림. 연속으로 맞힌 빈칸은 졸업해서 글로 보여요.', 'muted'), ...lecs.map(lec => {
+      const ids = lecBlanks(lec).map(b => b.id), act = ids.filter(blkActive), bad = act.filter(id => blankMarks[id]?.l === 'bad').length;
+      const b = btn('', () => { history.pushState('blk', ''); renderLecture(lec.n, true); }, 'eraRow blkRow'), bar = el('progress');
+      bar.max = ids.length; bar.value = ids.length - act.length;
+      b.append(el('span', `${lecNo(lec.n)} ${lec.title}`), el('span', `남은 ${act.length}/${ids.length}${bad ? ` · 틀림 ${bad}` : ''}`), bar);
+      return b;
+    })]));
+  show('blanks');
+}
+
+function blankText(text, prefix) {
+  const f = document.createDocumentFragment(), { added, parts } = L.blankParts(text, prefix);
+  if (added) f.append(el('span', '＋추가', 'add'));
+  for (const p of parts) f.append(typeof p === 'string' ? p : p.k && !blankSet.names ? p.ans : blankChip(p));
+  return f;
+}
+function blankChip(p) {
+  const m = blankMarks[p.id] ?? {}, seen = blkSeen.get(p.id), sel = blkCur?.id === p.id, act = blkActive(p.id);
+  const c = seen ? el('span', p.ans, 'qa ' + seen)   // answered this visit: stays as text
+    : !act ? el('span', p.ans, 'qdone' + (m.p ? ' plain' : ''))
+    : sel && blkCur.shown ? el('span', p.ans, 'q open sel')
+    : el('span', '?', 'q' + (sel ? ' sel' : '') + (m.l === 'ok' ? ' was-ok' : m.l === 'bad' ? ' was-bad' : ''));
+  c.onclick = () => { blkCur = sel ? null : { ...p, shown: !!seen }; renderLecture(blkLec); };
+  return c;
+}
+
+function renderLecture(n, fresh = false) {
+  const lec = blankLecs.find(l => l.n === n);
+  if (fresh) { blkSeen = new Map(); blkCur = null; blkMode = 'all'; }
+  blkLec = n;
+  $('blkTitle').textContent = `${lecNo(n)} ${lec.title}`;
+  $('blkBack').textContent = '← 강 목록';
+  $('blkList').hidden = true; $('blkLecView').hidden = false;
+  const mk = id => blankMarks[id] ?? {}, body = $('blkBody');
+  body.replaceChildren();
+  let sec = -1, sub, table = null;
+  for (const row of L.lectureRows(lec)) {
+    const bl = L.rowBlanks(row).filter(b => blankSet.names || !b.k);
+    const keep = blkMode === 'all' || bl.some(b => blkSeen.has(b.id))
+      || (blkMode === 'left' ? bl.some(b => blkActive(b.id)) : bl.some(b => blkActive(b.id) && mk(b.id).l === 'bad'));
+    if (!keep) continue;
+    if (row.sec !== sec) { const s = lec.sections[row.sec], h = el('h2'); h.append(el('span', s.h, 'n'), s.title); body.append(h); sec = row.sec; sub = undefined; table = null; }
+    if (row.sub !== sub) { if (row.sub) body.append(el('h3', row.sub)); sub = row.sub; table = null; }
+    if (!table) { table = el('table', null, 'blkTable'); body.append(table); }
+    const tr = el('tr'), k = el('td', null, 'k'), v = el('td'), ul = el('ul');
+    k.append(blankText(row.label, `${row.id}-k`));
+    row.lines.forEach((l, j) => { const li = el('li'); li.append(blankText(l, `${row.id}-${j}`)); ul.append(li); });
+    v.append(ul); tr.append(k, v); table.append(tr);
+  }
+  if (!body.children.length) body.append(el('p', blkMode === 'bad' ? '틀린 빈칸이 없어요 🎉' : '남은 빈칸이 없어요 🎉 모두 졸업했어요.', 'muted'));
+  const ids = lecBlanks(lec).map(b => b.id), act = ids.filter(blkActive), bad = act.filter(id => mk(id).l === 'bad').length;
+  const grad = ids.filter(id => L.blankGraduated(mk(id), blankSet.grad) && !mk(id).p).length, plain = ids.filter(id => mk(id).p).length;
+  $('blkStat').textContent = `빈칸 ${ids.length}개 · 남은 ${act.length} · 졸업 ${grad} · 그냥 보기 ${plain} · 틀린 것 ${bad}`;
+  $('blkProg').value = Math.round(100 * (ids.length - act.length) / Math.max(1, ids.length));
+  $('blkModes').replaceChildren(...[['all', '전체'], ['left', `남은 빈칸 (${act.length})`], ['bad', `틀린 것만 (${bad})`]].map(([k, t]) => {
+    const b = btn(t, () => { blkMode = k; blkCur = null; blkSeen = new Map(); renderLecture(n); scrollTo(0, 0); });
+    b.classList.toggle('on', k === blkMode);
+    return b;
+  }));
+  blankBar();
+  show('blanks');
+}
+
+function blankBar() {
+  $('gbar').hidden = !blkCur;
+  if (!blkCur) return;
+  const id = blkCur.id, m = blankMarks[id] ?? {}, need = blankSet.grad, box = $('gin');
+  const top = el('div', null, 'top'), row = el('div', null, 'row'), redo = () => renderLecture(blkLec);
+  const close = btn('×', () => { blkCur = null; redo(); }, 'x');
+  close.setAttribute('aria-label', '닫기');
+  if (!blkActive(id) && !blkSeen.has(id)) {   // graduated or kept as text
+    top.append(el('b', blkCur.ans), close);
+    row.append(btn('다시 빈칸으로', () => { blankMarks[id] = { ...m, p: false, s: 0 }; saveBlanks(); blkCur = null; redo(); }, 'main'));
+    return box.replaceChildren(top, el('p', m.p ? '그냥 보기로 정한 말이에요.' : `연속 ${m.s}번 맞혀 빈칸에서 졸업했어요.`, 'note'), row);
+  }
+  const run = need ? `연속 ${m.s ?? 0} / ${need}번 맞힘` : '';
+  if (!blkCur.shown) {
+    top.append(el('b', '이 빈칸에 들어갈 말은?'), close);
+    box.replaceChildren(top, el('p', [m.l === 'bad' ? '지난번에 틀린 빈칸' : m.l === 'ok' ? '지난번에 맞힌 빈칸' : '처음 푸는 빈칸', run].filter(Boolean).join(' · '), 'note'));
+    if (blkCur.hintOn) box.append(el('p', '💡 ' + (blkCur.hint || '힌트가 없어요'), 'hint'));
+    const h = btn('💡 힌트', () => { blkCur.hintOn = true; redo(); });
+    h.disabled = !!blkCur.hintOn;
+    row.append(h, btn('정답 보기', () => { blkCur.shown = true; redo(); }, 'main'));
+    return box.append(row);
+  }
+  top.append(el('b', blkCur.ans), close);
+  const grade = ok => { blankMarks[id] = L.gradeBlank(blankMarks[id], ok, L.today(), blankSet.once); blkSeen.set(id, ok ? 'ok' : 'bad'); saveBlanks(); blkCur = null; redo(); };
+  row.append(btn('○ 맞음', () => grade(true), 'y'), btn('✕ 틀림', () => grade(false), 'n'));
+  box.replaceChildren(top, el('p', '속으로 말한 답과 같았나요?' + (run ? ' · ' + run : ''), 'note'), row,
+    btn('이 말은 앞으로 빈칸 없이 그냥 보기', () => { blankMarks[id] = { ...m, p: true }; blkSeen.delete(id); saveBlanks(); blkCur = null; redo(); }, 'link'));
+}
+
+$('blanksBtn').onclick = () => { renderBlankList(); scrollTo(0, 0); };
+$('blkBack').onclick = () => (blkLec !== null && history.state === 'blk' ? history.back() : blkLec !== null ? renderBlankList() : goHome());
+$('blkReset').onclick = () => {
+  const lec = blankLecs.find(l => l.n === blkLec);
+  if (!confirm(`${lecNo(lec.n)} 빈칸 기록을 지울까요?`)) return;
+  for (const b of L.lectureRows(lec).flatMap(L.rowBlanks)) delete blankMarks[b.id];
+  saveBlanks(); renderLecture(blkLec, true);
+};
+const blkRedraw = () => (blkLec !== null ? renderLecture(blkLec) : renderBlankList());
+$('blkGrad').onchange = e => { blankSet.grad = +e.target.value; saveBlanks(); blkRedraw(); };
+$('blkOnce').onchange = e => { blankSet.once = e.target.checked; saveBlanks(); };
+$('blkNames').onchange = e => { blankSet.names = e.target.checked; saveBlanks(); blkCur = null; blkRedraw(); };
+$('blkUnplain').onclick = () => { for (const k in blankMarks) blankMarks[k].p = false; saveBlanks(); blkRedraw(); };
+$('blkUngrad').onclick = () => { for (const k in blankMarks) blankMarks[k].s = 0; saveBlanks(); blkRedraw(); };
+$('blkGrad').value = String(blankSet.grad); $('blkOnce').checked = blankSet.once; $('blkNames').checked = blankSet.names;
 
 function renderCheer() {
   const s = st();
@@ -862,7 +992,7 @@ $('clearCustomBtn').onclick = () => {
 };
 
 $('exportBtn').onclick = () => {
-  const data = { version: 5, progress, customCards: custom, stats, exam, myNotes, hours, mocks, streak };
+  const data = { version: 6, progress, customCards: custom, stats, exam, myNotes, hours, mocks, streak, blankMarks };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `hanneung-backup-${L.today()}.json`;
@@ -889,9 +1019,10 @@ $('backupFile').onchange = async e => {
   hours = data.hours ?? hours;
   mocks = data.mocks ?? mocks;
   streak = data.streak ?? streak;
+  blankMarks = data.blankMarks ?? blankMarks;
   mergeRecords();
   save('progress', progress); save('customCards', custom); save('stats', stats); save('exam', exam); save('myNotes', myNotes);
-  save('hours', hours); save('mocks', mocks); save('streak', streak);
+  save('hours', hours); save('mocks', mocks); save('streak', streak); save('blankMarks', blankMarks);
   $('backupMsg').textContent = '불러오기 완료';
 };
 
@@ -948,6 +1079,7 @@ $('back').onclick = goHome;
 window.onpopstate = () => {
   if (noteFrom) { noteFrom = false; show('study'); }
   else if (history.state === 1 && !$('notes').hidden) renderNotes();   // era note -> era list
+  else if (!$('blanks').hidden && blkLec !== null) renderBlankList();   // lecture -> lecture list, whatever state was restored
   else renderHome();
 };
 $('notesBack').onclick = () => (!noteFrom && history.state === 'era' ? history.go(-2) : goHome());
@@ -961,6 +1093,7 @@ $('hideKeys').onchange = e => {
   $('notesBody').querySelectorAll('.key.shown').forEach(k => k.classList.remove('shown'));
 };
 $('version').textContent = self.APP_VERSION ?? '';
+if (history.state) history.replaceState(null, '');   // a reload keeps the old screen's state; the app always opens on home
 
 try {
   const res = await fetch('cards.json');

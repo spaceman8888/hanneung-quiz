@@ -341,7 +341,8 @@ export function validateBackup(data) {
     && (data.myNotes === undefined || isObj(data.myNotes))
     && (data.hours === undefined || isHours(data.hours))
     && (data.mocks === undefined || (Array.isArray(data.mocks) && data.mocks.every(isMock)))
-    && (data.streak === undefined || isStreak(data.streak));
+    && (data.streak === undefined || isStreak(data.streak))
+    && (data.blankMarks === undefined || isObj(data.blankMarks));
 }
 
 export const ORDER_GAP = 3;
@@ -611,6 +612,39 @@ export function photoAsk(card, cards, { rng = Math.random, prefer = null } = {})
   return { prompt: pre ? '사진 속 유물을 사용한 시대는?' : '사진 속 문화유산이 만들어진 시대(나라)는?', answer: card.period,
     opts: shuffle([card.period, ...shuffle(near.slice(0, 6), rng).slice(0, CHOICES - 1)], rng) };
 }
+
+// 빈칸 노트 (blanks.json): lectures laid out like the textbook's summary pages — sections, rows of [label, lines].
+// In a label or line, {answer::hint} is a blank and {answer::hint::k} a left-column name (can be shown as text by a
+// setting); a line starting with "+" was added beyond the page. Ids follow the layout: lecture-group-row-place-index.
+export function blankParts(text, prefix = '') {
+  const added = text.startsWith('+');
+  let i = 0;
+  const parts = (added ? text.slice(1) : text).split(/(\{[^}]+\})/).filter(Boolean).map(p => {
+    const m = p.match(/^\{([^}]+)\}$/);
+    if (!m) return p;
+    const [ans, hint = '', k] = m[1].split('::');
+    return { ans, hint, k: !!k, id: `${prefix}-${i++}` };
+  });
+  return { added, parts };
+}
+export function lectureRows(lec) {
+  const out = [];
+  lec.sections.forEach((s, i) => {
+    const groups = [...(s.rows ? [[String(i), null, s.rows]] : []), ...(s.sub ?? []).map((u, j) => [`${i}u${j}`, u.title, u.rows])];
+    for (const [g, sub, rows] of groups) rows.forEach(([label, lines], r) => out.push({ sec: i, sub, id: `${lec.n}-${g}-${r}`, label, lines }));
+  });
+  return out;
+}
+export const rowBlanks = row => [['k', row.label], ...row.lines.map((l, j) => [j, l])]
+  .flatMap(([at, text]) => blankParts(text, `${row.id}-${at}`).parts.filter(p => typeof p !== 'string'));
+// A blank's record { s: right in a row, l: last 'ok' | 'bad', d: day of the last answer, p: kept as plain text }.
+// once: a second right answer on the same day doesn't add to the run (it is still in short-term memory).
+export function gradeBlank(prev = {}, ok, day, once = true) {
+  if (!ok) return { ...prev, l: 'bad', d: day, s: 0 };
+  return { ...prev, l: 'ok', d: day, s: (prev.s ?? 0) + (once && prev.d === day && prev.l === 'ok' ? 0 : 1) };
+}
+export const blankGraduated = (m = {}, need = 2) => need > 0 && (m.s ?? 0) >= need;
+export const blankActive = (m = {}, need = 2) => !m.p && !blankGraduated(m, need);
 
 // The card a wrong option belongs to: same kind of answer, same era first. 시기·지도 options (kings, places) have no single owner.
 export function ownerCard(card, choice, cards) {
